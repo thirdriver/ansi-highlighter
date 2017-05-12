@@ -30,7 +30,7 @@ public class LightFileReferenceXMLUpdater {
     private static final String MOCK_PROTOCOL = "mock://";
 
 
-    public void replaceMockFileReferencesInXML(String workspaceXmlPath, Map<String, ANSIHighlighter.OpenLightFileInfo> mockToReal) {
+    public void replaceMockFileReferencesInXML(String workspaceXmlPath, Map<String, ANSIHighlighterComponent.OpenLightFileInfo> mockToReal) {
         try {
             SAXBuilder saxBuilder = new SAXBuilder();
             Document document = saxBuilder.build(new File(workspaceXmlPath));
@@ -64,7 +64,7 @@ public class LightFileReferenceXMLUpdater {
     }
 
 
-    private void processAllMockFileReferencesUnder(Element parent, Map<String, ANSIHighlighter.OpenLightFileInfo> mockToReal) {
+    private void processAllMockFileReferencesUnder(Element parent, Map<String, ANSIHighlighterComponent.OpenLightFileInfo> mockToReal) {
         List<Element> children = parent.getChildren();
         if(children == null) return;
         for1: for(Element c : children) {
@@ -81,10 +81,10 @@ public class LightFileReferenceXMLUpdater {
         }
     }
 
-    private void replaceMpckReferenceIfApplicable(Element entryNode, String mockFileName, Map<String, ANSIHighlighter.OpenLightFileInfo> mockToReal) {
+    private void replaceMpckReferenceIfApplicable(Element entryNode, String mockFileName, Map<String, ANSIHighlighterComponent.OpenLightFileInfo> mockToReal) {
         String filePath = getAttrValue(entryNode, ENTRY_FILE_ATTR);
         if(filePath == null || !filePath.startsWith(MOCK_PROTOCOL)) return;
-        ANSIHighlighter.OpenLightFileInfo info = mockToReal.get(mockFileName);
+        ANSIHighlighterComponent.OpenLightFileInfo info = mockToReal.get(mockFileName);
         if(info == null) return;
         Attribute pathAttr = entryNode.getAttribute(ENTRY_FILE_ATTR);
         pathAttr.setValue("file://" + info.collapsedRealFilePath);

@@ -29,7 +29,7 @@
   </extensions>
 
   <actions>
-    <action id="toggleANSIHighlighter" class="com.alayouni.ansihighlight.ToggleANSIHighlighter" text="Toggle ANSI Highlighter"
+    <action id="toggleANSIHighlighter" class="com.alayouni.ansihighlight.ToggleANSIHighlighterAction" text="Toggle ANSI Highlighter"
             description="Toggles ANSI Highlighter">
       <add-to-group group-id="EditorPopupMenu" anchor="first"/>
       <keyboard-shortcut keymap="$default" first-keystroke="ctrl meta A"/>
@@ -38,7 +38,7 @@
 
   <project-components>
     <component>
-      <implementation-class>com.alayouni.ansihighlight.ANSIHighlighter</implementation-class>
+      <implementation-class>com.alayouni.ansihighlight.ANSIHighlighterComponent</implementation-class>
     </component>
   </project-components>
 

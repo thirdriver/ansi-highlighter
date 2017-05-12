@@ -30,7 +30,7 @@ import java.util.Map;
 /**
  * Created by alayouni on 5/2/17.
  */
-public class ANSIHighlighter implements ProjectComponent, ANSIHighlighterToggleNotifier {
+public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlighterToggleNotifier {
 
     class OpenLightFileInfo {
         final String realFilePath, collapsedRealFilePath, lightFileName;
@@ -53,7 +53,7 @@ public class ANSIHighlighter implements ProjectComponent, ANSIHighlighterToggleN
     private VirtualFile lastSelectedFile;
     private boolean isTogglingANSIHighlighter = false;
 
-    public ANSIHighlighter(Project project) {
+    public ANSIHighlighterComponent(Project project) {
         this.project = project;
         lightFileToReal = new HashMap<>();
         realFileToLight = new HashMap<>();

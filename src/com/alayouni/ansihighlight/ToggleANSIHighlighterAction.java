@@ -8,7 +8,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 /**
  * Created by alayouni on 5/8/17.
  */
-public class ToggleANSIHighlighter extends AnAction {
+public class ToggleANSIHighlighterAction extends AnAction {
 
     @Override
     public void actionPerformed(AnActionEvent e) {
