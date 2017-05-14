@@ -1,11 +1,12 @@
 package com.alayouni.ansihighlight;
 
-import com.intellij.AppTopics;
+import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.conversion.CannotConvertException;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.fileEditor.*;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.fileEditor.impl.EditorWindow;
@@ -23,6 +24,7 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.io.File;
 import java.util.HashMap;
 import java.util.List;
@@ -76,12 +78,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     public void initComponent() {
         MessageBusConnection connection = project.getMessageBus().connect();
         connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
-        connection.subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerAdapter() {
-            @Override
-            public void beforeAllDocumentsSaving() {
-                System.out.println("before doc saving  ");
-            }
-        });
 
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
@@ -90,12 +86,18 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 OpenLightFileInfo fileInfo = infoForFile(file);
                 fileInfo.openEditorCount ++;
                 if (file instanceof LightVirtualFile) {
-                    lightFileOpened(fileEditorManager, file, fileInfo);
+                    lightFileOpened(fileEditorManager, file);
                 } else if(!isTogglingANSIHighlighter) {
+                    FileEditor[] fileEditors = fileEditorManager.getEditors(file);
+                    //if editor count for real file is > 1 and project is initialized, means user opened real file
+                    //in new split (possible if light file editor was toggled to real file editor through action)
+                    //=> in this case no further action should be taken, real file should remain open (not closed and replaced by light editor)
+                    //on the other hand if project not initialized, regardless real file editors should always be replaced by light ANSI representations
+                    if(fileEditors.length > 1 && isProjectInitialized) return;
                      if (fileInfo.openEditorCount == 1) {
-                        realFileOpenedFirstTime(fileEditorManager, file, fileInfo);
+                        replaceRealFileOpenedFirstTimeByLightFile(fileEditorManager, file, fileInfo);
                     } else {
-                        realFileReOpened(fileEditorManager, file, fileInfo);
+                        replaceRealFileFileReopnedByLightFile(fileEditorManager, file, fileInfo);
                     }
                 }
                 isTogglingANSIHighlighter = false;
@@ -136,15 +138,26 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         return info;
     }
 
-    private void lightFileOpened(@NotNull FileEditorManager fileEditorManager, VirtualFile file, OpenLightFileInfo info) {
-//        utils.runInEDT(() -> {
-//            Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor();
-//            HighlightManager highlighter = HighlightManager.getInstance(project);
-//            editor.getMarkupModel().removeAllHighlighters();
-//            for(ANSI.RangedAttributes marker : info.highlights) {
-//                highlighter.addRangeHighlight(editor, marker.start, marker.end, marker.attr, false, null);
-//            }
-//        }, false);
+    private void lightFileOpened(@NotNull FileEditorManager fileEditorManager, VirtualFile file) {
+        FileEditor[] fileEditors = fileEditorManager.getAllEditors(file);
+        if(fileEditors.length <= 1) return;
+        Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor(),
+                markedEditor = getOtherEditor(fileEditors, editor);
+        if(markedEditor == null) return;
+        RangeHighlighter[] highlighters = markedEditor.getMarkupModel().getAllHighlighters();
+        if(highlighters == null) return;
+        HighlightManager manager = HighlightManager.getInstance(project);
+        for(RangeHighlighter highlighter : highlighters) {
+            manager.addRangeHighlight(editor, highlighter.getStartOffset(), highlighter.getEndOffset(), highlighter.getTextAttributes(), false, null);
+        }
+    }
+
+    private Editor getOtherEditor(FileEditor[] fileEditors, Editor editor) {
+        for(FileEditor fileEditor : fileEditors) {
+            Editor editor1 = utils.getEditor(fileEditor);
+            if(editor1 != editor) return editor1;
+        }
+        return null;
     }
 
     /**
@@ -156,7 +169,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
      * @param file
      * @param associatedLightFileInfo
      */
-    private void realFileOpenedFirstTime(@NotNull FileEditorManager fileEditorManager, @NotNull VirtualFile file, OpenLightFileInfo associatedLightFileInfo) {
+    private void replaceRealFileOpenedFirstTimeByLightFile(@NotNull FileEditorManager fileEditorManager, @NotNull VirtualFile file, OpenLightFileInfo associatedLightFileInfo) {
         Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor();
         String fileContent = editor.getDocument().getText();
         Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(fileContent);
@@ -164,11 +177,15 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         FileType fileType = file.getFileType();
         VirtualFile lightFile = new LightVirtualFile(associatedLightFileInfo.lightFileName, fileType, highlighted.second, file.getModificationStamp());
         associatedLightFileInfo.lightFileDescriptor = new OpenFileDescriptor(project, lightFile);
-        utils.runInEDT(() -> {
+        Runnable run = () -> {
             Editor lightEditor = fileEditorManager.openTextEditor(associatedLightFileInfo.lightFileDescriptor, true);
             ansi.applyHighlightsToEditor(highlighted.first, lightEditor);
             fileEditorManager.closeFile(file);//safe to close using file reference since here file got opened for the first time
-        }, !isProjectInitialized);
+        };
+        //we're already under EDT, but when the project is initializing, invokeLater is necessary because core initialization logic expects 'file' to remain open
+        //after callback and performs some logic based on that => not invoking later while the project is initializing will result in an exception
+        if(isProjectInitialized) run.run();
+        else SwingUtilities.invokeLater(run);
     }
 
     /**
@@ -188,11 +205,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
      * @param file
      * @param associatedLightFileInfo
      */
-    private void realFileReOpened(@NotNull FileEditorManager fileEditorManager, @NotNull VirtualFile file, OpenLightFileInfo associatedLightFileInfo) {
-        Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor();
-        String fileContent = editor.getDocument().getText();
-        Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(fileContent);
-        utils.runInEDT(() -> {
+    private void replaceRealFileFileReopnedByLightFile(@NotNull FileEditorManager fileEditorManager, @NotNull VirtualFile file, OpenLightFileInfo associatedLightFileInfo) {
+        Runnable run = () -> {
             EditorWindow window = ((FileEditorManagerEx)fileEditorManager).getSplitters().getCurrentWindow();
             if(this.lastSelectedFile != null && isProjectInitialized) {
                 VirtualFile lightFile = associatedLightFileInfo.lightFileDescriptor.getFile();
@@ -218,11 +232,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 //here the opening is triggered by user => there's no chance the real file got opened in a new splitter => the real file is not alone in the splitter
                 //=> closing the real file editor first is safe since it won't cause an empty splitter
                 fileEditorManager.closeFile(file);
-                boolean fileWasOpen = fileEditorManager.isFileOpen(associatedLightFileInfo.lightFileDescriptor.getFile());
-                Editor lightEditor = fileEditorManager.openTextEditor(associatedLightFileInfo.lightFileDescriptor, true);
-                if(!fileWasOpen) {
-                    ansi.applyHighlightsToEditor(highlighted.first, lightEditor);
-                }
+                fileEditorManager.openTextEditor(associatedLightFileInfo.lightFileDescriptor, true);
             } else {
                 //triggered during project initialization => the real file can get opened in a new splitter => there's a chance the
                 //the real file editor would be alone under its splitter => closing the real file editor first might result in an empty splitter, which
@@ -230,25 +240,15 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 //=> reporting the closing of the real file is not an issue here (during initialization) since the caret/focus end position is not a priority
                 VirtualFile lightFile = associatedLightFileInfo.lightFileDescriptor.getFile();
                 FileEditorManagerImpl fem = (FileEditorManagerImpl) fileEditorManager;
-                Pair<FileEditor[], FileEditorProvider[]> lightEditors = fem.openFileImpl2(window, lightFile, false);
-                highlightTextEditor(lightEditors.first, highlighted.first);
+                fem.openFileImpl2(window, lightFile, false);
                 fileEditorManager.closeFile(file);
             }
-        }, !isProjectInitialized);
+        };
+        //we're already under EDT, but when the project is initializing, invokeLater is necessary because core initialization logic expects 'file' to remain open
+        //after callback and performs some logic based on that => not invoking later while the project is initializing will result in an exception
+        if(isProjectInitialized) run.run();
+        else SwingUtilities.invokeLater(run);
     }
-
-    private void highlightTextEditor(FileEditor[] fileEditors, List<ANSI.RangedAttributes> highlights) {
-        for(FileEditor fileEditor : fileEditors) {
-            if(fileEditor instanceof TextEditor) {
-                ansi.applyHighlightsToEditor(highlights, ((TextEditor)fileEditor).getEditor());
-                return;
-            } else if(fileEditor instanceof Editor) {
-                ansi.applyHighlightsToEditor(highlights, (Editor)fileEditor);
-                return;
-            }
-        }
-    }
-
 
     private OpenLightFileInfo infoForRealFile(VirtualFile realFile) {
         String realPath = realFile.getPath();
@@ -273,25 +273,23 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void toggleANSIHighlighter(AnActionEvent e) {
-        utils.runInEDT(() -> {
-            VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-            if(!ANSIAwareFileType.isANSIColorable(file)) return;
-            FileEditorManagerEx fem = FileEditorManagerEx.getInstanceEx(project);
-            if(fem == null) return;
-            EditorWindow window = fem.getSplitters().getOrCreateCurrentWindow(file);
-            OpenLightFileInfo info = infoForFile(file);
-            if(info == null || info.lightFileDescriptor == null) return;
-            VirtualFile fileToOpen = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL).findFileByPath(info.realFilePath);
-            if(fileToOpen == null) return;
-            if(!(file instanceof LightVirtualFile)) {
-                fileToOpen = info.lightFileDescriptor.getFile();
-            }
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        if(!ANSIAwareFileType.isANSIColorable(file)) return;
+        FileEditorManagerEx fem = FileEditorManagerEx.getInstanceEx(project);
+        if(fem == null) return;
+        EditorWindow window = fem.getSplitters().getOrCreateCurrentWindow(file);
+        OpenLightFileInfo info = infoForFile(file);
+        if(info == null || info.lightFileDescriptor == null) return;
+        VirtualFile fileToOpen = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL).findFileByPath(info.realFilePath);
+        if(fileToOpen == null) return;
+        if(!(file instanceof LightVirtualFile)) {
+            fileToOpen = info.lightFileDescriptor.getFile();
+        }
 
-            isTogglingANSIHighlighter = true;
-            Pair<FileEditor[], FileEditorProvider[]> lightEditors = ((FileEditorManagerImpl)fem).openFileImpl2(window, fileToOpen, true);
+        isTogglingANSIHighlighter = true;
+        Pair<FileEditor[], FileEditorProvider[]> lightEditors = ((FileEditorManagerImpl)fem).openFileImpl2(window, fileToOpen, true);
 
-            window.closeFile(file);
-        }, false);
+        window.closeFile(file);
     }
 
     @Override

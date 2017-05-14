@@ -69,8 +69,17 @@ public class Utils {
         return  windowForEditor(e, fileEditorManager);
     }
 
-    public void runInEDT(Runnable run, boolean forceInvokeLater) {
-        if(SwingUtilities.isEventDispatchThread() && !forceInvokeLater) run.run();
-        else SwingUtilities.invokeLater(run);
+//    public void runInEDT(Runnable run, boolean forceInvokeLater) {
+//        if(SwingUtilities.isEventDispatchThread() && !forceInvokeLater) run.run();
+//        else SwingUtilities.invokeLater(run);
+//    }
+
+    public Editor getEditor(FileEditor fileEditor) {
+        if(fileEditor instanceof TextEditor) {
+            return ((TextEditor)fileEditor).getEditor();
+        } else if(fileEditor instanceof Editor) {
+            return (Editor)fileEditor;
+        }
+        return null;
     }
 }
