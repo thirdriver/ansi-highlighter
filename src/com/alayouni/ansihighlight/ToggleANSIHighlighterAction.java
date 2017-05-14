@@ -21,6 +21,6 @@ public class ToggleANSIHighlighterAction extends AnAction {
     @Override
     public void update(AnActionEvent e) {
         VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-        e.getPresentation().setEnabledAndVisible(ANSIAwareFileType.isANSIColorable(file));
+        e.getPresentation().setEnabledAndVisible(ANSIAwareFileType.isANSIAware(file));
     }
 }

@@ -4,6 +4,7 @@ import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.conversion.CannotConvertException;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
@@ -82,13 +83,13 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void fileOpened(@NotNull FileEditorManager fileEditorManager, @NotNull VirtualFile file) {
-                if(!ANSIAwareFileType.isANSIColorable(file)) return;
+                if(!ANSIAwareFileType.isANSIAware(file)) return;
                 OpenLightFileInfo fileInfo = infoForFile(file);
                 fileInfo.openEditorCount ++;
                 if (file instanceof LightVirtualFile) {
                     lightFileOpened(fileEditorManager, file);
                 } else if(!isTogglingANSIHighlighter) {
-                    FileEditor[] fileEditors = fileEditorManager.getEditors(file);
+                    FileEditor[] fileEditors = fileEditorManager.getAllEditors(file);
                     //if editor count for real file is > 1 and project is initialized, means user opened real file
                     //in new split (possible if light file editor was toggled to real file editor through action)
                     //=> in this case no further action should be taken, real file should remain open (not closed and replaced by light editor)
@@ -109,7 +110,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 //otherwise lightFileToReal will be empty when trying to process mock file references under workspace.xml after the project gets closed
                 //(see implementation of projectClosed() below)
                 if(isProjectClosing) return;
-                if(!ANSIAwareFileType.isANSIColorable(file)) return;
+                if(!ANSIAwareFileType.isANSIAware(file)) return;
                 OpenLightFileInfo info = infoForFile(file);
                 info.openEditorCount --;
                 if(info.openEditorCount == 0) {
@@ -274,22 +275,60 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     @Override
     public void toggleANSIHighlighter(AnActionEvent e) {
         VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-        if(!ANSIAwareFileType.isANSIColorable(file)) return;
+        if(!ANSIAwareFileType.isANSIAware(file)) return;
         FileEditorManagerEx fem = FileEditorManagerEx.getInstanceEx(project);
         if(fem == null) return;
-        EditorWindow window = fem.getSplitters().getOrCreateCurrentWindow(file);
+        EditorWindow window = fem.getSplitters().getCurrentWindow();
+        if(window == null) return;
         OpenLightFileInfo info = infoForFile(file);
         if(info == null || info.lightFileDescriptor == null) return;
         VirtualFile fileToOpen = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL).findFileByPath(info.realFilePath);
         if(fileToOpen == null) return;
+        boolean highlightLightFileEditor = false;
         if(!(file instanceof LightVirtualFile)) {
             fileToOpen = info.lightFileDescriptor.getFile();
+            Editor editor = e.getData(CommonDataKeys.EDITOR);
+            String content = editor.getDocument().getText();
+            highlightLightFileEditor = !syncLightFileEditorsToRealFileContent(file.getPath(), content);
+            //highlight only if no existing light editors have been synced/highlighted above, otherwise lightFileOpened() callback will copy their highlights when it gets called
         }
 
         isTogglingANSIHighlighter = true;
         Pair<FileEditor[], FileEditorProvider[]> lightEditors = ((FileEditorManagerImpl)fem).openFileImpl2(window, fileToOpen, true);
+        if(highlightLightFileEditor && lightEditors != null && lightEditors.first != null && lightEditors.first.length > 0) {//being defensive
+            Editor lightEditor = utils.getEditor(lightEditors.first[0]),
+                realEditor = e.getData(CommonDataKeys.EDITOR);
+            String fileContent = realEditor.getDocument().getText();
+            Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(fileContent);
+            WriteCommandAction.runWriteCommandAction(project, () -> {
+                lightEditor.getDocument().setText(highlighted.second);
+                ansi.applyHighlightsToEditor(highlighted.first, lightEditor);
+            });
+        }
 
         window.closeFile(file);
+    }
+
+    private boolean syncLightFileEditorsToRealFileContent(String realFilePath, String content) {
+        OpenLightFileInfo info = realFileToLight.get(realFilePath);
+        if(info == null) return false;
+        FileEditorManager fem = FileEditorManager.getInstance(project);
+        FileEditor[] fileEditors = fem.getAllEditors(info.lightFileDescriptor.getFile());
+        if(fileEditors == null || fileEditors.length == 0) return false;
+        final Editor editor = utils.getEditor(fileEditors[0]);
+        if(editor == null) return false;
+        Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(content);
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            editor.getDocument().setText(highlighted.second);//document is shared between all editors => set the content only once
+            Editor e;
+            for(FileEditor fileEditor : fileEditors) {
+                e = utils.getEditor(fileEditor);
+                if(e != null) {
+                    ansi.applyHighlightsToEditor(highlighted.first, e);
+                }
+            }
+        });
+        return true;
     }
 
     @Override

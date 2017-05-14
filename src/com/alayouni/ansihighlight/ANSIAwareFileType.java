@@ -63,7 +63,7 @@ public class ANSIAwareFileType implements FileType {
         return instance;
     }
 
-    public static boolean isANSIColorable(VirtualFile file) {
+    public static boolean isANSIAware(VirtualFile file) {
         return file.getFileType() instanceof ANSIAwareFileType;
     }
 
