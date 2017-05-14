@@ -52,7 +52,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     private Utils utils;
     private boolean isProjectInitialized = false;
     private boolean isProjectClosing = false;
-    private Editor lastSelectedEditor;
     private VirtualFile lastSelectedFile;
     private boolean isTogglingANSIHighlighter = false;
     private final ANSI ansi;
@@ -104,6 +103,9 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
             @Override
             public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                //make sure this is not triggered because the project is closing
+                //otherwise lightFileToReal will be empty when trying to process mock file references under workspace.xml after the project gets closed
+                //(see implementation of projectClosed() below)
                 if(isProjectClosing) return;
                 if(!ANSIAwareFileType.isANSIColorable(file)) return;
                 OpenLightFileInfo info = infoForFile(file);
@@ -117,7 +119,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
             @Override
             public void selectionChanged(@NotNull FileEditorManagerEvent e) {
-                lastSelectedEditor = e.getOldEditor() == null ? null : ((TextEditor)e.getOldEditor()).getEditor();
                 lastSelectedFile = e.getOldFile();
             }
         });
@@ -193,19 +194,22 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(fileContent);
         utils.runInEDT(() -> {
             EditorWindow window = ((FileEditorManagerEx)fileEditorManager).getSplitters().getCurrentWindow();
-            if(this.lastSelectedEditor != null && isProjectInitialized) {
-                EditorWindow window1 = utils.windowForEditor(this.lastSelectedEditor, fileEditorManager);
-                if(window1 != window) {
-                    //different windows means different splitters => below is necessary in the following scenario:
-                    //splitter1 has multiple tabs open and tab3 has focus initially, splitter2 contains associated light file to select instead of user triggered real file.
-                    //when user double clicks to re-open real file, the real file gets briefly opened under splitter1 next to tab3,
-                    //then it gets immediately closed (see code under if(isProjectInitialized)) to select associated light file instead.
-                    //the closing of real file under splitter1 will cause the selection of tab1 (instead of the initial tab3) under splitter1,
-                    //then associated light file under splitter2 will get selected and receive focus/caret.
-                    //the code below ensures splitter1 re-selects tab3 (which was initially open under splitter1) without giving it the focus/caret,
-                    //the focus should obviously remain under splitter2/associated light file
-                    final VirtualFile lastSelected = this.lastSelectedFile;
-                    fileEditorManager.openTextEditor(new OpenFileDescriptor(project, lastSelected), false);
+            if(this.lastSelectedFile != null && isProjectInitialized) {
+                VirtualFile lightFile = associatedLightFileInfo.lightFileDescriptor.getFile();
+                FileEditor fileEditor = fileEditorManager.getSelectedEditor(lightFile);
+                if(fileEditor != null) {
+                    EditorWindow window1 = utils.windowForFileEditor(fileEditor, fileEditorManager);//this is the window/split where resides the editor of the light file that will get selected
+                    if (window1 != window) {//if the current split and the one where the light file will get selected are different, make sure the current split keeps its initially selected tab selected
+                        //different windows means different splitters => below is necessary in the following scenario:
+                        //splitter1 has multiple tabs open and tab3 has focus initially, splitter2 contains associated light file to select instead of user triggered real file.
+                        //when user double clicks to re-open real file, the real file gets briefly opened under splitter1 next to tab3,
+                        //then it gets immediately closed (see code under if(isProjectInitialized)) to select associated light file instead.
+                        //the closing of real file under splitter1 will cause the selection of tab1 (instead of the initial tab3) under splitter1,
+                        //then associated light file under splitter2 will get selected and receive focus/caret.
+                        //the code below ensures splitter1 re-selects tab3 (which was initially open under splitter1) without giving it the focus/caret,
+                        //the focus should obviously remain under splitter2/associated light file
+                        ((FileEditorManagerImpl) fileEditorManager).openFileImpl2(window, this.lastSelectedFile, false);
+                    }
                 }
             }
 

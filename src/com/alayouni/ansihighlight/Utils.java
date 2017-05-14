@@ -4,7 +4,9 @@ import com.intellij.conversion.CannotConvertException;
 import com.intellij.conversion.ConversionContext;
 import com.intellij.conversion.impl.ConversionContextImpl;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileEditor.impl.EditorWindow;
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl;
 import com.intellij.openapi.project.Project;
@@ -57,6 +59,14 @@ public class Utils {
             if(tabsComp.isAncestorOf(editorComp)) return window;
         }
         return null;
+    }
+
+    public EditorWindow windowForFileEditor(FileEditor editor, FileEditorManager fileEditorManager) {
+        Editor e;
+        if(editor instanceof TextEditor) e = ((TextEditor)editor).getEditor();
+        else if(editor instanceof Editor) e = (Editor)editor;
+        else return null;
+        return  windowForEditor(e, fileEditorManager);
     }
 
     public void runInEDT(Runnable run, boolean forceInvokeLater) {
