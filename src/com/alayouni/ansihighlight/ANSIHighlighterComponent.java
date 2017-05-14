@@ -12,13 +12,15 @@ import com.intellij.openapi.fileEditor.impl.EditorWindow;
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.project.ProjectManagerAdapter;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.testFramework.LightVirtualFile;
-import com.intellij.util.messages.MessageBus;
+import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -49,6 +51,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     private Map<String, OpenLightFileInfo> realFileToLight;
     private Utils utils;
     private boolean isProjectInitialized = false;
+    private boolean isProjectClosing = false;
     private Editor lastSelectedEditor;
     private VirtualFile lastSelectedFile;
     private boolean isTogglingANSIHighlighter = false;
@@ -72,16 +75,16 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void initComponent() {
-        MessageBus messageBus = project.getMessageBus();
-        messageBus.connect().subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
-        messageBus.connect().subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerAdapter() {
+        MessageBusConnection connection = project.getMessageBus().connect();
+        connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
+        connection.subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerAdapter() {
             @Override
             public void beforeAllDocumentsSaving() {
                 System.out.println("before doc saving  ");
             }
         });
 
-        messageBus.connect().subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
+        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void fileOpened(@NotNull FileEditorManager fileEditorManager, @NotNull VirtualFile file) {
                 if(!ANSIAwareFileType.isANSIColorable(file)) return;
@@ -101,6 +104,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
             @Override
             public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                if(isProjectClosing) return;
                 if(!ANSIAwareFileType.isANSIColorable(file)) return;
                 OpenLightFileInfo info = infoForFile(file);
                 info.openEditorCount --;
@@ -115,6 +119,13 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
             public void selectionChanged(@NotNull FileEditorManagerEvent e) {
                 lastSelectedEditor = e.getOldEditor() == null ? null : ((TextEditor)e.getOldEditor()).getEditor();
                 lastSelectedFile = e.getOldFile();
+            }
+        });
+
+        connection.subscribe(ProjectManager.TOPIC, new ProjectManagerAdapter() {
+            @Override
+            public void projectClosing(Project project) {
+                isProjectClosing = true;
             }
         });
     }
