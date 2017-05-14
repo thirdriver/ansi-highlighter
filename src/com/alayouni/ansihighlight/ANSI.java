@@ -195,6 +195,11 @@ public class ANSI {
             } else {
                 attr.setEffectType(EffectType.LINE_UNDERSCORE);
             }
+            if(attr.getForegroundColor() != null) {
+                attr.setEffectColor(attr.getForegroundColor());
+            } else {
+                attr.setEffectColor(Color.BLACK);
+            }
         }
         return attr;
     }
