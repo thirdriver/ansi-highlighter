@@ -29,8 +29,8 @@
   </extensions>
 
   <actions>
-    <action id="toggleANSIHighlighter" class="com.alayouni.ansihighlight.ToggleANSIHighlighterAction" text="Toggle ANSI Highlighter"
-            description="Toggles ANSI Highlighter">
+    <action id="toggleANSIHighlighter" class="com.alayouni.ansihighlight.ToggleANSIHighlighterAction" text="Edit"
+            description="Toggles between Edit and Preview modes for ANSI aware files">
       <add-to-group group-id="EditorPopupMenu" anchor="first"/>
       <keyboard-shortcut keymap="$default" first-keystroke="ctrl meta A"/>
     </action>
