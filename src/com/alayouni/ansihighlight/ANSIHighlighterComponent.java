@@ -21,6 +21,8 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vfs.StandardFileSystems;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
+import com.intellij.openapi.vfs.newvfs.BulkFileListener;
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
@@ -58,6 +60,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     private VirtualFile lastSelectedFile;
     private boolean isTogglingANSIHighlighter = false;
     private final ANSI ansi;
+    final MessageBusConnection connection;
 
     public ANSIHighlighterComponent(Project project) {
         this.project = project;
@@ -73,11 +76,11 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         StartupManager.getInstance(project).runWhenProjectIsInitialized(()->{
             isProjectInitialized = true;
         });
+        connection = project.getMessageBus().connect();
     }
 
     @Override
     public void initComponent() {
-        MessageBusConnection connection = project.getMessageBus().connect();
         connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
 
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
@@ -130,6 +133,24 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
             @Override
             public void projectClosing(Project project) {
                 isProjectClosing = true;
+            }
+        });
+
+        //subscribing to bulk VFS_CHANGES relative to project connection bus, instead of adding a listener to VirtualFileManager because the latter is relative to Application
+        //which with multiple projects open could cause problems
+        connection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener.Adapter() {
+            @Override
+            public void after(@NotNull List<? extends VFileEvent> list) {
+                for(VFileEvent e : list) {
+                    VirtualFile file = e.getFile();
+                    if(ANSIAwareFileType.isANSIAware(file) && !(file instanceof LightVirtualFile)) {
+                        FileEditor[] lightFileEditors = getLightFileEditorsForRealFilePath(file.getPath());
+                        if(lightFileEditors != null) {
+                            String content = utils.readFile(file);
+                            syncLightFileEditors(lightFileEditors, content);
+                        }
+                    }
+                }
             }
         });
     }
@@ -289,8 +310,12 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
             fileToOpen = info.lightFileDescriptor.getFile();
             Editor editor = e.getData(CommonDataKeys.EDITOR);
             String content = editor.getDocument().getText();
-            highlightLightFileEditor = !syncLightFileEditorsToRealFileContent(file.getPath(), content);
+            FileEditor[] lightFileEditors = getLightFileEditorsForRealFilePath(file.getPath());
+            if(lightFileEditors != null) {
+                syncLightFileEditors(lightFileEditors, content);
+            }
             //highlight only if no existing light editors have been synced/highlighted above, otherwise lightFileOpened() callback will copy their highlights when it gets called
+            highlightLightFileEditor = lightFileEditors == null;
         }
 
         isTogglingANSIHighlighter = true;
@@ -309,14 +334,19 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         window.closeFile(file);
     }
 
-    private boolean syncLightFileEditorsToRealFileContent(String realFilePath, String content) {
+    private FileEditor[] getLightFileEditorsForRealFilePath(String realFilePath) {
         OpenLightFileInfo info = realFileToLight.get(realFilePath);
-        if(info == null) return false;
+        if(info == null) return null;
         FileEditorManager fem = FileEditorManager.getInstance(project);
         FileEditor[] fileEditors = fem.getAllEditors(info.lightFileDescriptor.getFile());
-        if(fileEditors == null || fileEditors.length == 0) return false;
-        final Editor editor = utils.getEditor(fileEditors[0]);
-        if(editor == null) return false;
+        if(fileEditors == null || fileEditors.length == 0) return null;
+        Editor editor = utils.getEditor(fileEditors[0]);
+        if(editor == null) return null;
+        return fileEditors;
+    }
+
+    private boolean syncLightFileEditors(FileEditor[] fileEditors, String content) {
+        Editor editor = utils.getEditor(fileEditors[0]);
         Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(content);
         WriteCommandAction.runWriteCommandAction(project, () -> {
             editor.getDocument().setText(highlighted.second);//document is shared between all editors => set the content only once
@@ -333,7 +363,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void disposeComponent() {
-        // TODO: insert component disposal logic here
+        connection.disconnect();
     }
 
     @Override

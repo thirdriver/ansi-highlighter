@@ -14,7 +14,7 @@ import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 
 import javax.swing.*;
-import java.io.File;
+import java.io.*;
 import java.util.Arrays;
 
 /**
@@ -81,5 +81,22 @@ public class Utils {
             return (Editor)fileEditor;
         }
         return null;
+    }
+
+    public String readFile(VirtualFile file) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            InputStream in = file.getInputStream();
+            BufferedReader br = new BufferedReader(new InputStreamReader(in));
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+                sb.append('\n');
+            }
+            br.close();
+            return sb.toString();
+        } catch (IOException e) {
+            return null;
+        }
     }
 }
