@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.impl.EditorImpl;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.fileEditor.*;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
@@ -147,7 +148,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                     VirtualFile file = e.getFile();
                     if(ANSIAwareFileType.isANSIAware(file) && !(file instanceof LightVirtualFile)) {
                         Pair<FileEditor[], OpenLightFileInfo> info = getLightFileEditorsForRealFilePath(file.getPath());
-                        if(info != null && info.second.lastModificationStamp < file.getModificationStamp()) {
+                        if(info != null && info.second.lastModificationStamp != file.getModificationStamp()) {
                             String content = utils.readFile(file);
                             syncLightFileEditorsIfModified(info.first, content, info.second, file.getModificationStamp());
                         }
@@ -163,10 +164,12 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     }
 
     private void lightFileOpened(@NotNull FileEditorManager fileEditorManager, VirtualFile file) {
+        Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor();
+        ((EditorImpl)editor).setViewer(true);
+
         FileEditor[] fileEditors = fileEditorManager.getAllEditors(file);
         if(fileEditors.length <= 1) return;
-        Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor(),
-                markedEditor = getOtherEditor(fileEditors, editor);
+        Editor markedEditor = getOtherEditor(fileEditors, editor);
         if(markedEditor == null) return;
         RangeHighlighter[] highlighters = markedEditor.getMarkupModel().getAllHighlighters();
         if(highlighters == null) return;
@@ -349,7 +352,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     }
 
     private void syncLightFileEditorsIfModified(FileEditor[] fileEditors, String content, OpenLightFileInfo info, long currentModificationStamp) {
-        if(currentModificationStamp <= info.lastModificationStamp) return;
+        if(currentModificationStamp == info.lastModificationStamp) return;
         info.lastModificationStamp = currentModificationStamp;
         Editor editor = utils.getEditor(fileEditors[0]);
         Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(content);
@@ -386,6 +389,5 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         // called when project is being closed
         String workspaceXmlPath = project.getWorkspaceFile().getCanonicalPath();
         new LightFileReferenceXMLUpdater().replaceMockFileReferencesInXML(workspaceXmlPath, lightFileToReal);
-        System.out.println("project closed ");
     }
 }

@@ -79,10 +79,11 @@ public class Utils {
         return null;
     }
 
-    public String readFile(VirtualFile file) {
+    public String readFile(VirtualFile virtualFile) {
         try {
             StringBuilder sb = new StringBuilder();
-            InputStream in = file.getInputStream();
+            //virtualFile.getInputStream() doesn't seem to get synced immediately => use FileInputStream instead
+            InputStream in = new FileInputStream(virtualFile.getPath());
             BufferedReader br = new BufferedReader(new InputStreamReader(in));
             String line;
             while ((line = br.readLine()) != null) {
