@@ -26,9 +26,9 @@ public class ToggleANSIHighlighterAction extends AnAction {
         e.getPresentation().setEnabledAndVisible(isAnsiAwareFile);
         if(isAnsiAwareFile) {
             if(file instanceof LightVirtualFile) {
-                e.getPresentation().setText("Switch to Edit Mode");
+                e.getPresentation().setText("Switch To Edit Mode");
             } else {
-                e.getPresentation().setText("Switch to Preview Mode");
+                e.getPresentation().setText("Switch To Preview Mode");
             }
         }
     }
