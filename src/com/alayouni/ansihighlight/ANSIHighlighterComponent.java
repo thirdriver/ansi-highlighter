@@ -92,14 +92,14 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 if(!ANSIAwareFileType.isANSIAware(file)) return;
                 OpenLightFileInfo fileInfo = infoForFile(file);
                 fileInfo.openEditorCount ++;
-                if (file instanceof LightVirtualFile) {
+                if (file instanceof LightVirtualFile) {//in memory file - preview mode
                     lightFileOpened(fileEditorManager, file);
                 } else if(!isTogglingANSIHighlighter) {
                     FileEditor[] fileEditors = fileEditorManager.getAllEditors(file);
                     //if editor count for real file is > 1 and project is initialized, means user opened real file
-                    //in new split (possible if light file editor was toggled to real file editor through action)
+                    //in new split (possible if editor got switched to edit mode)
                     //=> in this case no further action should be taken, real file should remain open (not closed and replaced by light editor)
-                    //on the other hand if project not initialized, regardless real file editors should always be replaced by light ANSI representations
+                    //on the other hand if project not initialized, regardless, real file editors should always be replaced by light ANSI aware preview editors
                     if(fileEditors.length > 1 && isProjectInitialized) return;
                      if (fileInfo.openEditorCount == 1) {
                         replaceRealFileOpenedFirstTimeByLightFile(fileEditorManager, file, fileInfo);
@@ -139,8 +139,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
             }
         });
 
-        //subscribing to bulk VFS_CHANGES relative to project connection bus, instead of adding a listener to VirtualFileManager because the latter is relative to Application
-        //which with multiple projects open could cause problems
+        //subscribing to bulk VFS_CHANGES, which is relative to project connection bus, instead of adding a listener to VirtualFileManager because the latter
+        //is relative to Application scope which with multiple projects open could cause problems
         connection.subscribe(VirtualFileManager.VFS_CHANGES, new BulkFileListener.Adapter() {
             @Override
             public void after(@NotNull List<? extends VFileEvent> list) {
@@ -165,7 +165,9 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     private void lightFileOpened(@NotNull FileEditorManager fileEditorManager, VirtualFile file) {
         Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor();
-        ((EditorImpl)editor).setViewer(true);
+        if(editor instanceof EditorImpl) {
+            ((EditorImpl) editor).setViewer(true);//sets the editor to read only mode
+        }
 
         FileEditor[] fileEditors = fileEditorManager.getAllEditors(file);
         if(fileEditors.length <= 1) return;
@@ -189,8 +191,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     /**
      * Called when a real file got opened for the first time, which could occur either during project initialization or if triggered explicitly by user.
-     * In both cases the real file will be closed and the associated light file passed in parameter will be opened instead under the
-     * same splitter where the closed real file got originally opened.
+     * In both cases the real file will be closed and replaced by a light file ansi aware preview editor under the same splitter where the closed real file
+     * got originally opened. The light file to open will be read from associatedLightFileInfo.
      *
      * @param fileEditorManager
      * @param file
@@ -221,7 +223,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
      * <p>If the real file got re-opened during project initialization, it means the project was closed with the file opened in multiple
      * splitters. In this case the real file will be closed and the associated light file passed in parameter will be opened instead under
      * the same splitter where the closed real file got originally opened. The end result will be the same light file opened under multiple
-     * splitters / multiple editors, but all editors will be bound to the same unique document to keep the editors synced since they all represent one file.</p>
+     * splitters / multiple editors, but all editors will be bound to the same unique document to keep the editors synced since they all represent same file.</p>
      *
      * <p>If the real file re-opening was triggered explicitly by the user, the re-opening won't be allowed, instead the real file
      * will get closed, and the associated light file (passed in parameter), which is already open, will get selected and receive
@@ -239,13 +241,14 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 FileEditor fileEditor = fileEditorManager.getSelectedEditor(lightFile);
                 if(fileEditor != null) {
                     EditorWindow window1 = utils.windowForFileEditor(fileEditor, fileEditorManager);//this is the window/split where resides the editor of the light file that will get selected
-                    if (window1 != window) {//if the current split and the one where the light file will get selected are different, make sure the current split keeps its initially selected tab selected
-                        //different windows means different splitters => below is necessary in the following scenario:
-                        //splitter1 has multiple tabs open and tab3 has focus initially, splitter2 contains associated light file to select instead of user triggered real file.
+                    if (window1 != window) {//if the current split and the one where the light file will get selected are different,
+                        //make sure the current split keeps its initially selected tab selected
+                        //more precisely, below code is necessary in the following scenario:
+                        //splitter1 has multiple tabs open and tab3 has focus initially, splitter2 contains associated light file to select.
                         //when user double clicks to re-open real file, the real file gets briefly opened under splitter1 next to tab3,
-                        //then it gets immediately closed (see code under if(isProjectInitialized)) to select associated light file instead.
-                        //the closing of real file under splitter1 will cause the selection of tab1 (instead of the initial tab3) under splitter1,
-                        //then associated light file under splitter2 will get selected and receive focus/caret.
+                        //then it gets immediately closed (see code under if(isProjectInitialized)) to select already open associated light file instead.
+                        //the closing of real file under splitter1 will cause the selection of tab1 (instead of the initial tab3) under splitter1 before
+                        //the associated light file under splitter2 gets selected and receives focus/caret.
                         //the code below ensures splitter1 re-selects tab3 (which was initially open under splitter1) without giving it the focus/caret,
                         //the focus should obviously remain under splitter2/associated light file
                         ((FileEditorManagerImpl) fileEditorManager).openFileImpl2(window, this.lastSelectedFile, false);
@@ -318,23 +321,22 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 String content = editor.getDocument().getText();
                 syncLightFileEditorsIfModified(infoPair.first, content, info, editor.getDocument().getModificationStamp());
             }
-            //highlight only if no existing light editors have been synced/highlighted above, otherwise lightFileOpened() callback will copy their highlights when it gets called
+            //highlight only if no existing light editors have been synced/highlighted above, otherwise lightFileOpened() callback will copy and apply their highlights when it gets called
             highlightLightFileEditor = infoPair == null;
         }
 
         isTogglingANSIHighlighter = true;
         Pair<FileEditor[], FileEditorProvider[]> lightEditors = ((FileEditorManagerImpl)fem).openFileImpl2(window, fileToOpen, true);
 
-        if(highlightLightFileEditor && lightEditors != null && lightEditors.first != null
-                && lightEditors.first.length > 0) {//being defensive
+        if(highlightLightFileEditor && lightEditors != null && lightEditors.first != null && lightEditors.first.length > 0) {
             Editor lightEditor = utils.getEditor(lightEditors.first[0]),
                 realEditor = e.getData(CommonDataKeys.EDITOR);
             String fileContent = realEditor.getDocument().getText();
             Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(fileContent);
             WriteCommandAction.runWriteCommandAction(project, () -> {
                 lightEditor.getDocument().setText(highlighted.second);
-                ansi.applyHighlightsToEditor(highlighted.first, lightEditor);
             });
+            ansi.applyHighlightsToEditor(highlighted.first, lightEditor);
         }
 
         window.closeFile(file);
@@ -381,12 +383,11 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void projectOpened() {
-        // called when project is opened
+
     }
 
     @Override
     public void projectClosed() {
-        // called when project is being closed
         String workspaceXmlPath = project.getWorkspaceFile().getCanonicalPath();
         new LightFileReferenceXMLUpdater().replaceMockFileReferencesInXML(workspaceXmlPath, lightFileToReal);
     }

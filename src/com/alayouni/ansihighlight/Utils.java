@@ -71,19 +71,14 @@ public class Utils {
 
 
     public Editor getEditor(FileEditor fileEditor) {
-        if(fileEditor instanceof TextEditor) {
-            return ((TextEditor)fileEditor).getEditor();
-        } else if(fileEditor instanceof Editor) {
-            return (Editor)fileEditor;
-        }
+        if(fileEditor instanceof TextEditor) return ((TextEditor)fileEditor).getEditor();
         return null;
     }
 
     public String readFile(VirtualFile virtualFile) {
         try {
             StringBuilder sb = new StringBuilder();
-            //virtualFile.getInputStream() doesn't seem to get synced immediately => use FileInputStream instead
-            InputStream in = new FileInputStream(virtualFile.getPath());
+            InputStream in = virtualFile.getInputStream();
             BufferedReader br = new BufferedReader(new InputStreamReader(in));
             String line;
             while ((line = br.readLine()) != null) {
