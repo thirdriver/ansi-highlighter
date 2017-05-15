@@ -42,12 +42,14 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         final String realFilePath, collapsedRealFilePath, lightFileName;
         OpenFileDescriptor lightFileDescriptor;
         int openEditorCount = 0;
+        long lastModificationStamp;
 
 
         public OpenLightFileInfo(VirtualFile realFile, String lightFileName) {
             this.realFilePath = realFile.getPath();
             this.collapsedRealFilePath = utils.collapsePath(realFile);
             this.lightFileName = lightFileName;
+            lastModificationStamp = realFile.getModificationStamp();
         }
     }
 
@@ -144,10 +146,10 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 for(VFileEvent e : list) {
                     VirtualFile file = e.getFile();
                     if(ANSIAwareFileType.isANSIAware(file) && !(file instanceof LightVirtualFile)) {
-                        FileEditor[] lightFileEditors = getLightFileEditorsForRealFilePath(file.getPath());
-                        if(lightFileEditors != null) {
+                        Pair<FileEditor[], OpenLightFileInfo> info = getLightFileEditorsForRealFilePath(file.getPath());
+                        if(info != null && info.second.lastModificationStamp < file.getModificationStamp()) {
                             String content = utils.readFile(file);
-                            syncLightFileEditors(lightFileEditors, content);
+                            syncLightFileEditorsIfModified(info.first, content, info.second, file.getModificationStamp());
                         }
                     }
                 }
@@ -195,9 +197,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         Editor editor = ((TextEditor) fileEditorManager.getSelectedEditor(file)).getEditor();
         String fileContent = editor.getDocument().getText();
         Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(fileContent);
-
         FileType fileType = file.getFileType();
-        VirtualFile lightFile = new LightVirtualFile(associatedLightFileInfo.lightFileName, fileType, highlighted.second, file.getModificationStamp());
+        LightVirtualFile lightFile = new LightVirtualFile(associatedLightFileInfo.lightFileName, fileType, highlighted.second, file.getModificationStamp());
         associatedLightFileInfo.lightFileDescriptor = new OpenFileDescriptor(project, lightFile);
         Runnable run = () -> {
             Editor lightEditor = fileEditorManager.openTextEditor(associatedLightFileInfo.lightFileDescriptor, true);
@@ -308,19 +309,21 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         boolean highlightLightFileEditor = false;
         if(!(file instanceof LightVirtualFile)) {
             fileToOpen = info.lightFileDescriptor.getFile();
+            Pair<FileEditor[], OpenLightFileInfo> infoPair = getLightFileEditorsForRealFilePath(file.getPath());
             Editor editor = e.getData(CommonDataKeys.EDITOR);
-            String content = editor.getDocument().getText();
-            FileEditor[] lightFileEditors = getLightFileEditorsForRealFilePath(file.getPath());
-            if(lightFileEditors != null) {
-                syncLightFileEditors(lightFileEditors, content);
+            if(infoPair != null) {
+                String content = editor.getDocument().getText();
+                syncLightFileEditorsIfModified(infoPair.first, content, info, editor.getDocument().getModificationStamp());
             }
             //highlight only if no existing light editors have been synced/highlighted above, otherwise lightFileOpened() callback will copy their highlights when it gets called
-            highlightLightFileEditor = lightFileEditors == null;
+            highlightLightFileEditor = infoPair == null;
         }
 
         isTogglingANSIHighlighter = true;
         Pair<FileEditor[], FileEditorProvider[]> lightEditors = ((FileEditorManagerImpl)fem).openFileImpl2(window, fileToOpen, true);
-        if(highlightLightFileEditor && lightEditors != null && lightEditors.first != null && lightEditors.first.length > 0) {//being defensive
+
+        if(highlightLightFileEditor && lightEditors != null && lightEditors.first != null
+                && lightEditors.first.length > 0) {//being defensive
             Editor lightEditor = utils.getEditor(lightEditors.first[0]),
                 realEditor = e.getData(CommonDataKeys.EDITOR);
             String fileContent = realEditor.getDocument().getText();
@@ -334,7 +337,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         window.closeFile(file);
     }
 
-    private FileEditor[] getLightFileEditorsForRealFilePath(String realFilePath) {
+    private Pair<FileEditor[], OpenLightFileInfo> getLightFileEditorsForRealFilePath(String realFilePath) {
         OpenLightFileInfo info = realFileToLight.get(realFilePath);
         if(info == null) return null;
         FileEditorManager fem = FileEditorManager.getInstance(project);
@@ -342,23 +345,24 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         if(fileEditors == null || fileEditors.length == 0) return null;
         Editor editor = utils.getEditor(fileEditors[0]);
         if(editor == null) return null;
-        return fileEditors;
+        return new Pair(fileEditors, info);
     }
 
-    private boolean syncLightFileEditors(FileEditor[] fileEditors, String content) {
+    private void syncLightFileEditorsIfModified(FileEditor[] fileEditors, String content, OpenLightFileInfo info, long currentModificationStamp) {
+        if(currentModificationStamp <= info.lastModificationStamp) return;
+        info.lastModificationStamp = currentModificationStamp;
         Editor editor = utils.getEditor(fileEditors[0]);
         Pair<List<ANSI.RangedAttributes>, String> highlighted = ansi.extractAttributesFromAnsiTaggedText(content);
         WriteCommandAction.runWriteCommandAction(project, () -> {
             editor.getDocument().setText(highlighted.second);//document is shared between all editors => set the content only once
-            Editor e;
-            for(FileEditor fileEditor : fileEditors) {
-                e = utils.getEditor(fileEditor);
-                if(e != null) {
-                    ansi.applyHighlightsToEditor(highlighted.first, e);
-                }
-            }
         });
-        return true;
+        Editor e;
+        for(FileEditor fileEditor : fileEditors) {
+            e = utils.getEditor(fileEditor);
+            if(e != null) {
+                ansi.applyHighlightsToEditor(highlighted.first, e);
+            }
+        }
     }
 
     @Override
