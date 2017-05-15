@@ -361,9 +361,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         WriteCommandAction.runWriteCommandAction(project, () -> {
             editor.getDocument().setText(highlighted.second);//document is shared between all editors => set the content only once
         });
-        Editor e;
         for(FileEditor fileEditor : fileEditors) {
-            e = utils.getEditor(fileEditor);
+            Editor e = utils.getEditor(fileEditor);
             if(e != null) {
                 ansi.applyHighlightsToEditor(highlighted.first, e);
             }
