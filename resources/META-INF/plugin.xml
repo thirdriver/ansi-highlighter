@@ -1,8 +1,8 @@
 <idea-plugin>
-  <id>com.your.company.unique.plugin.id</id>
-  <name>Plugin display name here</name>
+  <id>com.alayouni.ansiHighlight</id>
+  <name>ANSI Highlighter</name>
   <version>1.0</version>
-  <vendor email="support@yourcompany.com" url="http://www.yourcompany.com">YourCompany</vendor>
+  <vendor email="amd.layouni@gmail.com" url="linkedin.com/in/ahmed-layouni-4041a656">Ahmed Layouni</vendor>
 
   <description><![CDATA[
       This plugin supports the rendering of the most common <a href="https://en.wikipedia.org/wiki/ANSI_escape_code#graphics">ANSI graphic rendition escape sequences</a> under IntelliJ editor. The following features are available:
