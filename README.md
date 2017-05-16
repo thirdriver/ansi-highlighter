@@ -23,3 +23,5 @@ This IntelliJ plugin supports the rendering of the most common <a href="https://
         <li>All text background color codes (40-47)</li>
         </ul>
       </li>
+
+Note that proper rendering of ANSI escape sequences involves hiding ANSI markup text. The only way to hide text in IntelliJ editor (text folding aside) is by altering original text, which if loaded directly into the editor, would modify the backing file content. Altering the backing file content would obviously cause the loss of all ANSI escape sequences. To workaround this, the plugin implementation loads the altered text into an in-memory file everytime an ANSI aware file type is opened in the editor, a FileEditorManagerListener is used for this purpose. The workaround then is to close the original editor and replace it by an in-memory file backed editor for preview. Further work is then needed to keep the in-memory editor synced to eventual changes brought to original in-disk file, further UI related work is also necessary.
