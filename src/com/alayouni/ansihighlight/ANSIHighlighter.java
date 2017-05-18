@@ -2,6 +2,7 @@ package com.alayouni.ansihighlight;
 
 import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.FoldingModel;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
@@ -16,7 +17,7 @@ import java.util.Map;
 /**
  * Created by alayouni on 5/12/17.
  */
-public class ANSI {
+public class ANSIHighlighter {
     private static final String ESC = "\u001B[";
     private static final char SEQ_END = 'm';
     private static final char SEQ_DELIM = ';';
@@ -104,57 +105,43 @@ public class ANSI {
 
     private final HighlightManager highlighter;
 
-    public ANSI(Project project) {
+    public ANSIHighlighter(Project project) {
         this.highlighter = HighlightManager.getInstance(project);
     }
 
-    public Pair<List<RangedAttributes>, String> extractAttributesFromAnsiTaggedText(String text) {
-        List<RangedAttributes> highlights = new ArrayList<>();
-        StringBuilder sb = new StringBuilder();
+    public void highlightANSISequences(Editor editor) {
+        String text = editor.getDocument().getText();
         int escIndex = text.indexOf(ESC),
                 startIndex = 0;
-        if(escIndex == -1) return new Pair<>(highlights, text);
-        RangedAttributes range = null;
-        Pair<TextAttributes, Integer> attr;
+        if(escIndex == -1) return;
+        Pair<TextAttributes, Integer> attr = null;
+        TextAttributes attr0 = null;
+        FoldingModel folder = editor.getFoldingModel();
         while (escIndex >= 0) {
-            sb.append(text.substring(startIndex, escIndex));
+            if(attr != null) attr0 = attr.first;
             attr = extractTextAttributesFromANSIEscapeSequence(text, escIndex);
             if(attr == null) {
-                startIndex = escIndex;
                 escIndex = text.indexOf(ESC, escIndex + 1);
             } else {
-                if(range != null) {
-                    range.end = sb.length();
-                    highlights.add(range);
+                if(attr0 != null) {
+                    highlighter.addRangeHighlight(editor, startIndex, escIndex, attr0, false, null);
                 }
+                final int foldStart = escIndex,
+                        foldEnd = attr.second;
+                folder.runBatchFoldingOperation(()->{
+                    folder.addFoldRegion(foldStart, foldEnd, "").setExpanded(false);
+                }, true);
                 startIndex = attr.second;
                 if(startIndex == text.length()) break;
-
-                if(attr.first == RESET_MARKER) range = null;
-                else {
-                    range = new RangedAttributes();
-                    range.start = sb.length();
-                    range.attr = attr.first;
-                }
+                attr0 = attr.first == RESET_MARKER ? null : attr.first;
                 escIndex = text.indexOf(ESC, startIndex);
             }
-            if(escIndex == -1) {
-                sb.append(text.substring(startIndex, text.length()));
-                if(range != null) {
-                    range.end = sb.length();
-                    highlights.add(range);
-                }
+            if(escIndex == -1 && attr0 != null) {
+                highlighter.addRangeHighlight(editor, startIndex, text.length(), attr0, false, null);
             }
         }
-        return new Pair<>(highlights, sb.toString());
     }
 
-    public void applyHighlightsToEditor(List<RangedAttributes> highlights, Editor editor) {
-        editor.getMarkupModel().removeAllHighlighters();
-        for(RangedAttributes range : highlights) {
-            highlighter.addRangeHighlight(editor, range.start, range.end, range.attr, false, null);
-        }
-    }
 
     private Pair<TextAttributes, Integer> extractTextAttributesFromANSIEscapeSequence(String text, int escIndex) {
         List<Integer> ansiCodes = new ArrayList<>();
@@ -260,12 +247,6 @@ public class ANSI {
     private Color backgroundFromCode(int backgroundCode) {
         if(backgroundCode >= codeToBackground.size()) return null;
         return codeToBackground.get(backgroundCode);
-    }
-
-
-    public static class RangedAttributes {
-        public int start, end;
-        public TextAttributes attr;
     }
 
 }
