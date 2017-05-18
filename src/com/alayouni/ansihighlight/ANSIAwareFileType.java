@@ -64,6 +64,7 @@ public class ANSIAwareFileType implements FileType {
     }
 
     public static boolean isANSIAware(VirtualFile file) {
+        if(file == null) return false;
         return file.getFileType() instanceof ANSIAwareFileType;
     }
 

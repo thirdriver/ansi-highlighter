@@ -23,9 +23,9 @@ public class ToggleANSIHighlighterAction extends AnAction {
     public void update(AnActionEvent e) {
         VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
         boolean isAnsiAwareFile = ANSIAwareFileType.isANSIAware(file);
-        Editor editor = e.getData(CommonDataKeys.EDITOR);
         e.getPresentation().setEnabledAndVisible(isAnsiAwareFile);
         if(isAnsiAwareFile) {
+            Editor editor = e.getData(CommonDataKeys.EDITOR);
             if(editor.isViewer()) {
                 e.getPresentation().setText("Switch To Edit Mode");
             } else {
