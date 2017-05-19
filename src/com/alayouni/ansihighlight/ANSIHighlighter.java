@@ -65,7 +65,6 @@ public class ANSIHighlighter {
     private static final int MAGENTA_BG = 45;
     private static final int CYAN_BG = 46;
     private static final int WHITE_BG = 47;
-    //might be used in future to save marked documents in ANSI format
     private static final List<Color> codeToBackground = new ArrayList<>();
     static {
         for(int i = 0; i < BLACK_BG; i++) {
