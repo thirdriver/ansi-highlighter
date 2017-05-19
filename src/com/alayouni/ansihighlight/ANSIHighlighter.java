@@ -10,9 +10,7 @@ import com.intellij.openapi.util.Pair;
 
 import java.awt.*;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Created by alayouni on 5/12/17.
@@ -33,16 +31,11 @@ public class ANSIHighlighter {
         fontCodeToType.add(null);
         fontCodeToType.add(Font.ITALIC);
     }
-    private static final Map<Integer, Integer> fontTypeToCode = new HashMap<>();
-    static {
-        fontTypeToCode.put(Font.BOLD, BOLD);
-        fontTypeToCode.put(Font.ITALIC, ITALIC);
-    }
 
     private static final int UNDERLINE = 4;
 
     private static final int BLACK = 30;
-    private static final int RED	 = 31;
+    private static final int RED = 31;
     private static final int GREEN = 32;
     private static final int YELLOW = 33;
     private static final int BLUE = 34;
@@ -62,12 +55,6 @@ public class ANSIHighlighter {
         codeToForeground.add(Color.MAGENTA);
         codeToForeground.add(Color.CYAN);
         codeToForeground.add(Color.LIGHT_GRAY);
-    }
-    private static final Map<Color, Integer> foregroundToCode = new HashMap<>();
-    static {
-        for(int i = BLACK; i <= WHITE; i++) {
-            foregroundToCode.put(codeToForeground.get(i), i);
-        }
     }
 
     private static final int BLACK_BG = 40;
@@ -92,13 +79,6 @@ public class ANSIHighlighter {
         codeToBackground.add(Color.MAGENTA);
         codeToBackground.add(Color.CYAN);
         codeToBackground.add(Color.LIGHT_GRAY);
-    }
-    //might be used in future to save marked documents in ANSI format
-    private static final Map<Color, Integer> backgroundToCode = new HashMap<>();
-    static {
-        for(int i = BLACK_BG; i <= WHITE_BG; i++) {
-            backgroundToCode.put(codeToBackground.get(i), i);
-        }
     }
 
     private static final TextAttributes RESET_MARKER = new TextAttributes();

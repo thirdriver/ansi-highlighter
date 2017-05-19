@@ -1,4 +1,4 @@
-This IntelliJ plugin supports the rendering of the most common <a href="https://en.wikipedia.org/wiki/ANSI_escape_code#graphics">ANSI graphic rendition escape sequences</a> under IntelliJ editor. The following features are available:
+This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">IntelliJ plugin</a> supports the rendering of the most common <a href="https://en.wikipedia.org/wiki/ANSI_escape_code#graphics">ANSI graphic rendition escape sequences</a> under IntelliJ editor. The following features are available:
 <ul>
 <li>
     Configurable 'ANSI Aware' file extensions:
@@ -28,3 +28,5 @@ This IntelliJ plugin supports the rendering of the most common <a href="https://
         <li>All text background color codes (40-47)</li>
     </ul>
 </li>
+</ul>
+
