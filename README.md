@@ -33,7 +33,7 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">Intell
     <ul>
         <li>Go to Preferences | Editor | Colors & Fonts | Console Colors</li>
         <li>Expand 'ANSI Colors'</li>
-        <li>Customize the following colors:
+        <li>Customize the following foreground colors:
         <ul>
             <li>Black</li>
             <li>Red</li>
