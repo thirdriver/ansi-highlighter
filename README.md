@@ -21,11 +21,31 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">Intell
     Only the below graphic rendition codes are supported:
     <ul>
         <li>Reset code (0)</li>
-        <li>Bold or increased intensity code (1)</li>
+        <li>Bold code (1)</li>
         <li>Italic code (3)</li>
         <li>Single Underline code (4)</li>
         <li>All text foreground color codes (30-37)</li>
         <li>All text background color codes (40-47)</li>
+    </ul>
+</li>
+<li>
+    Customize ANSI colors:
+    <ul>
+        <li>Go to Preferences | Editor | Colors & Fonts | Console Colors</li>
+        <li>Expand 'ANSI Colors'</li>
+        <li>Customize the following colors:
+        <ul>
+            <li>Black</li>
+            <li>Red</li>
+            <li>Green</li>
+            <li>Yellow</li>
+            <li>Blue</li>
+            <li>Magenta</li>
+            <li>Cyan</li>
+            <li>White</li>
+        </ul>
+        Note that the other colors are only supported by the console (not by the editor).
+        </li>
     </ul>
 </li>
 </ul>
