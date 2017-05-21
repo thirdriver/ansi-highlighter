@@ -1,8 +1,12 @@
 package com.alayouni.ansihighlight;
 
 import com.intellij.codeInsight.highlighting.HighlightManager;
+import com.intellij.execution.process.ConsoleHighlighter;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.FoldingModel;
+import com.intellij.openapi.editor.colors.EditorColorsManager;
+import com.intellij.openapi.editor.colors.EditorColorsScheme;
+import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
@@ -42,19 +46,19 @@ public class ANSIHighlighter {
     private static final int MAGENTA = 35;
     private static final int CYAN = 36;
     private static final int WHITE = 37;
-    private static final List<Color> codeToForeground = new ArrayList<>();
+    private static final List<TextAttributesKey> codeToForeground = new ArrayList<>();
     static {
         for(int i = 0; i < BLACK; i ++) {
             codeToForeground.add(null);
         }
-        codeToForeground.add(Color.BLACK);
-        codeToForeground.add(Color.RED);
-        codeToForeground.add(Color.GREEN);
-        codeToForeground.add(Color.YELLOW);
-        codeToForeground.add(Color.BLUE);
-        codeToForeground.add(Color.MAGENTA);
-        codeToForeground.add(Color.CYAN);
-        codeToForeground.add(Color.LIGHT_GRAY);
+        codeToForeground.add(ConsoleHighlighter.BLACK);
+        codeToForeground.add(ConsoleHighlighter.RED);
+        codeToForeground.add(ConsoleHighlighter.GREEN);
+        codeToForeground.add(ConsoleHighlighter.YELLOW);
+        codeToForeground.add(ConsoleHighlighter.BLUE);
+        codeToForeground.add(ConsoleHighlighter.MAGENTA);
+        codeToForeground.add(ConsoleHighlighter.CYAN);
+        codeToForeground.add(ConsoleHighlighter.WHITE);
     }
 
     private static final int BLACK_BG = 40;
@@ -65,27 +69,30 @@ public class ANSIHighlighter {
     private static final int MAGENTA_BG = 45;
     private static final int CYAN_BG = 46;
     private static final int WHITE_BG = 47;
-    private static final List<Color> codeToBackground = new ArrayList<>();
+    private static final List<TextAttributesKey> codeToBackground = new ArrayList<>();
     static {
         for(int i = 0; i < BLACK_BG; i++) {
             codeToBackground.add(null);
         }
-        codeToBackground.add(Color.BLACK);
-        codeToBackground.add(Color.RED);
-        codeToBackground.add(Color.GREEN);
-        codeToBackground.add(Color.YELLOW);
-        codeToBackground.add(Color.BLUE);
-        codeToBackground.add(Color.MAGENTA);
-        codeToBackground.add(Color.CYAN);
-        codeToBackground.add(Color.LIGHT_GRAY);
+        codeToBackground.add(ConsoleHighlighter.BLACK);
+        codeToBackground.add(ConsoleHighlighter.RED);
+        codeToBackground.add(ConsoleHighlighter.GREEN);
+        codeToBackground.add(ConsoleHighlighter.YELLOW);
+        codeToBackground.add(ConsoleHighlighter.BLUE);
+        codeToBackground.add(ConsoleHighlighter.MAGENTA);
+        codeToBackground.add(ConsoleHighlighter.CYAN);
+        codeToBackground.add(ConsoleHighlighter.WHITE);
     }
 
     private static final TextAttributes RESET_MARKER = new TextAttributes();
 
     private final HighlightManager highlighter;
 
+    private final EditorColorsScheme colorsScheme;
+
     public ANSIHighlighter(Project project) {
         this.highlighter = HighlightManager.getInstance(project);
+        colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
     }
 
     public void highlightANSISequences(Editor editor) {
@@ -220,12 +227,18 @@ public class ANSIHighlighter {
 
     private Color foregroundFromCode(int foregroundCode) {
         if(foregroundCode >= codeToForeground.size()) return null;
-        return codeToForeground.get(foregroundCode);
+        TextAttributesKey key = codeToForeground.get(foregroundCode);
+        Color cl = colorsScheme.getAttributes(key).getForegroundColor();
+        if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
+        return cl;
     }
 
     private Color backgroundFromCode(int backgroundCode) {
         if(backgroundCode >= codeToBackground.size()) return null;
-        return codeToBackground.get(backgroundCode);
+        TextAttributesKey key = codeToBackground.get(backgroundCode);
+        Color cl = colorsScheme.getAttributes(key).getForegroundColor();
+        if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
+        return cl;
     }
 
 }

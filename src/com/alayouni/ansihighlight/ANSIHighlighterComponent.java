@@ -40,8 +40,10 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         EditorFactory.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
             @Override
             public void editorCreated(@NotNull EditorFactoryEvent e) {
+
                 Editor editor = e.getEditor();
                 VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
+
                 if(!ANSIAwareFileType.isANSIAware(file)) return;
                 cleanupEditor(editor);
                 ansiHighlighter.highlightANSISequences(editor);
