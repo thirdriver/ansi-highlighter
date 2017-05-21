@@ -1,8 +1,10 @@
 package com.alayouni.ansihighlight;
 
+import com.intellij.AppTopics;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.components.ProjectComponent;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.FoldRegion;
@@ -12,6 +14,7 @@ import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.FoldingListener;
 import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.FileDocumentManagerAdapter;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
@@ -36,17 +39,31 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     @Override
     public void initComponent() {
         connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
+        connection.subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerAdapter() {
+            @Override
+            public void fileContentReloaded(@NotNull VirtualFile file, @NotNull Document document) {
+                if(!ANSIAwareFileType.isANSIAware(file)) return;
+                Editor[] editors = EditorFactory.getInstance().getEditors(document);
+                if(editors == null || editors.length == 0) return;
+                for(Editor editor : editors) {
+                    if(editor.isViewer()) {
+                        cleanupEditor(editor);
+                        ansiHighlighter.highlightANSISequences(editor);
+                    }
+                }
+            }
+        });
 
         EditorFactory.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
             @Override
             public void editorCreated(@NotNull EditorFactoryEvent e) {
-
                 Editor editor = e.getEditor();
                 VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
 
                 if(!ANSIAwareFileType.isANSIAware(file)) return;
                 cleanupEditor(editor);
                 ansiHighlighter.highlightANSISequences(editor);
+
                 if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
                 FoldingModelEx fm = (FoldingModelEx)editor.getFoldingModel();
                 fm.addListener(new FoldingListener() {
