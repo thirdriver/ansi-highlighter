@@ -33,7 +33,7 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">Intell
     <ul>
         <li>Go to Preferences | Editor | Colors & Fonts | Console Colors</li>
         <li>Expand 'ANSI Colors'</li>
-        <li>Customize the following foreground colors:
+        <li>Customize the following foreground/background colors:
         <ul>
             <li>Black</li>
             <li>Red</li>
@@ -43,9 +43,10 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">Intell
             <li>Magenta</li>
             <li>Cyan</li>
             <li>White</li>
+            <li>Other colors are only supported by the console (not by the editor).</li>
         </ul>
-        Note that the other colors are only supported by the console (not by the editor).
         </li>
+        <li>Don't forget to hit the 'Apply' button, and reopen 'ANSI Aware' files for changes to take effect.</li>
     </ul>
 </li>
 </ul>

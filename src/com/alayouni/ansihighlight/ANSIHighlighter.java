@@ -46,19 +46,19 @@ public class ANSIHighlighter {
     private static final int MAGENTA = 35;
     private static final int CYAN = 36;
     private static final int WHITE = 37;
-    private static final List<TextAttributesKey> codeToForeground = new ArrayList<>();
+    private static final List<Pair<TextAttributesKey, Color>> codeToForeground = new ArrayList<>();
     static {
         for(int i = 0; i < BLACK; i ++) {
             codeToForeground.add(null);
         }
-        codeToForeground.add(ConsoleHighlighter.BLACK);
-        codeToForeground.add(ConsoleHighlighter.RED);
-        codeToForeground.add(ConsoleHighlighter.GREEN);
-        codeToForeground.add(ConsoleHighlighter.YELLOW);
-        codeToForeground.add(ConsoleHighlighter.BLUE);
-        codeToForeground.add(ConsoleHighlighter.MAGENTA);
-        codeToForeground.add(ConsoleHighlighter.CYAN);
-        codeToForeground.add(ConsoleHighlighter.WHITE);
+        codeToForeground.add(new Pair(ConsoleHighlighter.BLACK, Color.BLACK));
+        codeToForeground.add(new Pair(ConsoleHighlighter.RED, Color.RED));
+        codeToForeground.add(new Pair(ConsoleHighlighter.GREEN, Color.GREEN));
+        codeToForeground.add(new Pair(ConsoleHighlighter.YELLOW, Color.YELLOW));
+        codeToForeground.add(new Pair(ConsoleHighlighter.BLUE, Color.BLUE));
+        codeToForeground.add(new Pair(ConsoleHighlighter.MAGENTA, Color.MAGENTA));
+        codeToForeground.add(new Pair(ConsoleHighlighter.CYAN, Color.CYAN));
+        codeToForeground.add(new Pair(ConsoleHighlighter.WHITE, Color.WHITE));
     }
 
     private static final int BLACK_BG = 40;
@@ -69,19 +69,19 @@ public class ANSIHighlighter {
     private static final int MAGENTA_BG = 45;
     private static final int CYAN_BG = 46;
     private static final int WHITE_BG = 47;
-    private static final List<TextAttributesKey> codeToBackground = new ArrayList<>();
+    private static final List<Pair<TextAttributesKey, Color>> codeToBackground = new ArrayList<>();
     static {
         for(int i = 0; i < BLACK_BG; i++) {
             codeToBackground.add(null);
         }
-        codeToBackground.add(ConsoleHighlighter.BLACK);
-        codeToBackground.add(ConsoleHighlighter.RED);
-        codeToBackground.add(ConsoleHighlighter.GREEN);
-        codeToBackground.add(ConsoleHighlighter.YELLOW);
-        codeToBackground.add(ConsoleHighlighter.BLUE);
-        codeToBackground.add(ConsoleHighlighter.MAGENTA);
-        codeToBackground.add(ConsoleHighlighter.CYAN);
-        codeToBackground.add(ConsoleHighlighter.WHITE);
+        codeToBackground.add(new Pair(ConsoleHighlighter.BLACK, Color.BLACK));
+        codeToBackground.add(new Pair(ConsoleHighlighter.RED, Color.RED));
+        codeToBackground.add(new Pair(ConsoleHighlighter.GREEN, Color.GREEN));
+        codeToBackground.add(new Pair(ConsoleHighlighter.YELLOW, Color.YELLOW));
+        codeToBackground.add(new Pair(ConsoleHighlighter.BLUE, Color.BLUE));
+        codeToBackground.add(new Pair(ConsoleHighlighter.MAGENTA, Color.MAGENTA));
+        codeToBackground.add(new Pair(ConsoleHighlighter.CYAN, Color.CYAN));
+        codeToBackground.add(new Pair(ConsoleHighlighter.WHITE, Color.WHITE));
     }
 
     private static final TextAttributes RESET_MARKER = new TextAttributes();
@@ -229,17 +229,19 @@ public class ANSIHighlighter {
 
     private Color foregroundFromCode(int foregroundCode) {
         if(foregroundCode >= codeToForeground.size()) return null;
-        TextAttributesKey key = codeToForeground.get(foregroundCode);
+        TextAttributesKey key = codeToForeground.get(foregroundCode).first;
         Color cl = colorsScheme.getAttributes(key).getForegroundColor();
         if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
+        if(cl == null) cl = codeToForeground.get(foregroundCode).second;
         return cl;
     }
 
     private Color backgroundFromCode(int backgroundCode) {
         if(backgroundCode >= codeToBackground.size()) return null;
-        TextAttributesKey key = codeToBackground.get(backgroundCode);
-        Color cl = colorsScheme.getAttributes(key).getForegroundColor();
-        if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
+        TextAttributesKey key = codeToBackground.get(backgroundCode).first;
+        Color cl = colorsScheme.getAttributes(key).getBackgroundColor();
+        if(cl == null) cl = key.getDefaultAttributes().getBackgroundColor();
+        if(cl == null) cl = codeToBackground.get(backgroundCode).second;
         return cl;
     }
 
