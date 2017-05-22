@@ -38,22 +38,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void initComponent() {
-        connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
-        connection.subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerAdapter() {
-            @Override
-            public void fileContentReloaded(@NotNull VirtualFile file, @NotNull Document document) {
-                if(!ANSIAwareFileType.isANSIAware(file)) return;
-                Editor[] editors = EditorFactory.getInstance().getEditors(document);
-                if(editors == null || editors.length == 0) return;
-                for(Editor editor : editors) {
-                    if(editor.isViewer()) {
-                        cleanupEditor(editor);
-                        ansiHighlighter.highlightANSISequences(editor);
-                    }
-                }
-            }
-        });
-
         EditorFactory.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
             @Override
             public void editorCreated(@NotNull EditorFactoryEvent e) {
@@ -83,6 +67,24 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 ((EditorEx)editor).setViewer(true);
             }
         }, project);
+
+        //sync editor highlights to external changes brought to file
+        connection.subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerAdapter() {
+            @Override
+            public void fileContentReloaded(@NotNull VirtualFile file, @NotNull Document document) {
+                if(!ANSIAwareFileType.isANSIAware(file)) return;
+                Editor[] editors = EditorFactory.getInstance().getEditors(document);
+                if(editors == null || editors.length == 0) return;
+                for(Editor editor : editors) {
+                    if(editor.isViewer()) {
+                        cleanupEditor(editor);
+                        ansiHighlighter.highlightANSISequences(editor);
+                    }
+                }
+            }
+        });
+
+        connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
     }
 
     @Override

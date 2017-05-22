@@ -110,7 +110,8 @@ public class ANSIHighlighter {
                 escIndex = text.indexOf(ESC, escIndex + 1);
             } else {
                 if(attr0 != null) {
-                    highlighter.addRangeHighlight(editor, startIndex, escIndex, attr0, false, null);
+                    //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 flag)
+                    highlighter.addOccurrenceHighlight(editor, startIndex, escIndex, attr0, 0,null, null);
                 }
                 final int foldStart = escIndex,
                         foldEnd = attr.second;
@@ -123,7 +124,8 @@ public class ANSIHighlighter {
                 escIndex = text.indexOf(ESC, startIndex);
             }
             if(escIndex == -1 && attr0 != null) {
-                highlighter.addRangeHighlight(editor, startIndex, text.length(), attr0, false, null);
+                //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 flag)
+                highlighter.addOccurrenceHighlight(editor, startIndex, text.length(), attr0, 0, null, null);
             }
         }
     }
