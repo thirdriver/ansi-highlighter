@@ -7,10 +7,9 @@ import com.intellij.openapi.editor.FoldingModel;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
-import com.intellij.openapi.editor.markup.EffectType;
-import com.intellij.openapi.editor.markup.TextAttributes;
+import com.intellij.openapi.editor.markup.*;
+import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Pair;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -28,221 +27,312 @@ public class ANSIHighlighter {
 
     private static final int BOLD = 1;
     private static final int ITALIC = 3;
-    private static final List<Integer> fontCodeToType = new ArrayList<>();
-    static {
-        fontCodeToType.add(null);
-        fontCodeToType.add(Font.BOLD);
-        fontCodeToType.add(null);
-        fontCodeToType.add(Font.ITALIC);
-    }
-
     private static final int UNDERLINE = 4;
 
-    private static final int BLACK = 30;
-    private static final int RED = 31;
-    private static final int GREEN = 32;
-    private static final int YELLOW = 33;
-    private static final int BLUE = 34;
-    private static final int MAGENTA = 35;
-    private static final int CYAN = 36;
-    private static final int WHITE = 37;
-    private static final List<Pair<TextAttributesKey, Color>> codeToForeground = new ArrayList<>();
-    static {
-        for(int i = 0; i < BLACK; i ++) {
-            codeToForeground.add(null);
-        }
-        codeToForeground.add(new Pair(ConsoleHighlighter.BLACK, Color.BLACK));
-        codeToForeground.add(new Pair(ConsoleHighlighter.RED, Color.RED));
-        codeToForeground.add(new Pair(ConsoleHighlighter.GREEN, Color.GREEN));
-        codeToForeground.add(new Pair(ConsoleHighlighter.YELLOW, Color.YELLOW));
-        codeToForeground.add(new Pair(ConsoleHighlighter.BLUE, Color.BLUE));
-        codeToForeground.add(new Pair(ConsoleHighlighter.MAGENTA, Color.MAGENTA));
-        codeToForeground.add(new Pair(ConsoleHighlighter.CYAN, Color.CYAN));
-        codeToForeground.add(new Pair(ConsoleHighlighter.WHITE, Color.WHITE));
-    }
+    private static final int FOREGROUND_START_CODE = 30;
+    private static final int FOREGROUND_END_CODE = 37;
 
-    private static final int BLACK_BG = 40;
-    private static final int RED_BG = 41;
-    private static final int GREEN_BG = 42;
-    private static final int YELLOW_BG = 43;
-    private static final int BLUE_BG = 44;
-    private static final int MAGENTA_BG = 45;
-    private static final int CYAN_BG = 46;
-    private static final int WHITE_BG = 47;
-    private static final List<Pair<TextAttributesKey, Color>> codeToBackground = new ArrayList<>();
-    static {
-        for(int i = 0; i < BLACK_BG; i++) {
-            codeToBackground.add(null);
-        }
-        codeToBackground.add(new Pair(ConsoleHighlighter.BLACK, Color.BLACK));
-        codeToBackground.add(new Pair(ConsoleHighlighter.RED, Color.RED));
-        codeToBackground.add(new Pair(ConsoleHighlighter.GREEN, Color.GREEN));
-        codeToBackground.add(new Pair(ConsoleHighlighter.YELLOW, Color.YELLOW));
-        codeToBackground.add(new Pair(ConsoleHighlighter.BLUE, Color.BLUE));
-        codeToBackground.add(new Pair(ConsoleHighlighter.MAGENTA, Color.MAGENTA));
-        codeToBackground.add(new Pair(ConsoleHighlighter.CYAN, Color.CYAN));
-        codeToBackground.add(new Pair(ConsoleHighlighter.WHITE, Color.WHITE));
-    }
+    private static final int BACKGROUND_START_CODE = 40;
+    private static final int BACKGROUND_END_CODE = 47;
 
-    private static final TextAttributes RESET_MARKER = new TextAttributes();
+    private static final TextAttributes[] ALL_ATTRIBUTES = new TextAttributes[1096];
+    private static final TextAttributesEncoder[] ENCODER = new TextAttributesEncoder[49];
+    private static final EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
+    private static final ColorKey[] ALL_COLORS = {
+            new ColorKey(ConsoleHighlighter.BLACK, Color.BLACK, Color.BLACK),
+            new ColorKey(ConsoleHighlighter.RED, Color.RED, Color.RED),
+            new ColorKey(ConsoleHighlighter.GREEN, Color.GREEN, Color.GREEN),
+            new ColorKey(ConsoleHighlighter.YELLOW, Color.YELLOW, Color.YELLOW),
+            new ColorKey(ConsoleHighlighter.BLUE, Color.BLUE, Color.BLUE),
+            new ColorKey(ConsoleHighlighter.MAGENTA, Color.MAGENTA, Color.MAGENTA),
+            new ColorKey(ConsoleHighlighter.CYAN, Color.CYAN, Color.CYAN),
+            new ColorKey(ConsoleHighlighter.WHITE, Color.WHITE, Color.WHITE)
+    };
+
+    static {
+        ENCODER[RESET] = new TextAttributesEncoder(0, 0);
+        ENCODER[BOLD] = new TextAttributesEncoder(0xFFFFFFFE, 1);
+        ENCODER[ITALIC] = new TextAttributesEncoder(0xFFFFFFFD, 2);
+        ENCODER[UNDERLINE] = new TextAttributesEncoder(0xFFFFFFFB, 4);
+
+        int resetMask = 0xFFFFFF87;
+        for(int colorCode = FOREGROUND_START_CODE; colorCode <= FOREGROUND_END_CODE; colorCode ++) {
+            ENCODER[colorCode] = new TextAttributesEncoder(resetMask, (colorCode - FOREGROUND_START_CODE + 1) << 3);
+        }
+        ENCODER[FOREGROUND_END_CODE + 1] = new TextAttributesEncoder(resetMask, 0);//no foreground
+
+        resetMask = 0xFFFFF87F;
+        for(int colorCode = BACKGROUND_START_CODE; colorCode <= BACKGROUND_END_CODE; colorCode ++) {
+            ENCODER[colorCode] = new TextAttributesEncoder(resetMask, (colorCode - BACKGROUND_START_CODE + 1) << 7);
+        }
+        ENCODER[BACKGROUND_END_CODE + 1] = new TextAttributesEncoder(resetMask, 0);//no background
+    }
 
     private final HighlightManager highlighter;
 
-    private final EditorColorsScheme colorsScheme;
+    private final Project project;
 
     public ANSIHighlighter(Project project) {
+        this.project = project;
         this.highlighter = HighlightManager.getInstance(project);
-        colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
+        preloadAllTextAttributes();
     }
 
     public void highlightANSISequences(Editor editor) {
+
+//        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", false) {
+//            @Override
+//            public void run(@NotNull ProgressIndicator indicator) {
+//                List<Range> foldRegions = highlightANSISequences(editor, indicator);
+//                if(foldRegions == null || foldRegions.isEmpty()) return;
+//                applyFoldRegions(editor, foldRegions, indicator);
+//            }
+//        });
+        List<Range> foldRegions = highlightANSISequences(editor, null);
+        if(foldRegions == null || foldRegions.isEmpty()) return;
+        applyFoldRegions(editor, foldRegions, null);
+    }
+
+    private List<Range> highlightANSISequences(Editor editor, ProgressIndicator indicator) {
         String text = editor.getDocument().getText();
+        MarkupModel markup = editor.getMarkupModel();
         int escIndex = text.indexOf(ESC),
                 startIndex = 0;
-        if(escIndex == -1) return;
-        Pair<TextAttributes, Integer> attr = null;
+        if(escIndex == -1) return null;
+
+        int progress = 0, newProgress;
+        if(indicator != null) indicator.setFraction(progress);
+        double tot = text.length();
+
+        TextAttributesRange res = new TextAttributesRange();
+        res.start = escIndex;
+        res.end = -1;
         TextAttributes attr0 = null;
-        FoldingModel folder = editor.getFoldingModel();
-        while (escIndex >= 0) {
-            if(attr != null) attr0 = attr.first;
-            attr = extractTextAttributesFromANSIEscapeSequence(text, escIndex);
-            if(attr == null) {
-                escIndex = text.indexOf(ESC, escIndex + 1);
+
+        java.util.List<Range> foldRegions = new ArrayList<>();
+        while (res.start >= 0) {
+            if(res.end != -1) attr0 = ALL_ATTRIBUTES[res.id];
+            res.id = 0;
+            extractTextAttributesFromANSIEscapeSequence(text, res);
+            if(res.end == -1) {
+                res.start = text.indexOf(ESC, res.start + 1);
             } else {
                 if(attr0 != null) {
-                    //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 flag)
-                    highlighter.addOccurrenceHighlight(editor, startIndex, escIndex, attr0, 0,null, null);
+                    //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 mask)
+                    markup.addRangeHighlighter(startIndex, res.start, HighlighterLayer.ADDITIONAL_SYNTAX, attr0, HighlighterTargetArea.EXACT_RANGE);
+//                    highlighter.addOccurrenceHighlight(editor, startIndex, res.start, attr0, 0,null, null);
                 }
-                final int foldStart = escIndex,
-                        foldEnd = attr.second;
-                folder.runBatchFoldingOperation(()->{
-                    folder.addFoldRegion(foldStart, foldEnd, "").setExpanded(false);
-                }, true);
-                startIndex = attr.second;
+                foldRegions.add(new Range(res.start, res.end));
+
+                startIndex = res.end;
                 if(startIndex == text.length()) break;
-                attr0 = attr.first == RESET_MARKER ? null : attr.first;
-                escIndex = text.indexOf(ESC, startIndex);
+                attr0 = res.id == 0 ? null : ALL_ATTRIBUTES[res.id];
+                res.start = text.indexOf(ESC, startIndex);
             }
-            if(escIndex == -1 && attr0 != null) {
-                //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 flag)
-                highlighter.addOccurrenceHighlight(editor, startIndex, text.length(), attr0, 0, null, null);
+            if(res.start == -1 && attr0 != null) {
+                //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 mask)
+                markup.addRangeHighlighter(startIndex, text.length(), HighlighterLayer.ADDITIONAL_SYNTAX, attr0, HighlighterTargetArea.EXACT_RANGE);
+//                highlighter.addOccurrenceHighlight(editor, startIndex, text.length(), attr0, 0, null, null);
+            }
+            if(indicator != null && res.start > 0) {
+                newProgress = (int) Math.round(res.start / tot);
+                if(newProgress != progress) indicator.setFraction(progress = newProgress);
             }
         }
+        return foldRegions;
+    }
+
+    private void applyFoldRegions(Editor editor, List<Range> foldRegions, ProgressIndicator indicator) {
+        FoldingModel folder = editor.getFoldingModel();
+        folder.runBatchFoldingOperation(() -> {
+            int progress = 0, newProgress;
+            double total = foldRegions.size();
+            if(indicator != null) indicator.setFraction(progress);
+            int i = 0;
+            for(Range range : foldRegions) {
+                folder.addFoldRegion(range.start, range.end, "").setExpanded(false);
+                i ++;
+                newProgress = (int) Math.round(i / total);
+                if(indicator != null && newProgress != progress) indicator.setFraction(progress = newProgress);
+            }
+        }, true);
     }
 
 
-    private Pair<TextAttributes, Integer> extractTextAttributesFromANSIEscapeSequence(String text, int escIndex) {
-        List<Integer> ansiCodes = new ArrayList<>();
-        TextAttributes attr = new TextAttributes();
-        int endIndex = -1, index, startIndex;
-        int ansiCode;
+
+    private void extractTextAttributesFromANSIEscapeSequence(String text, TextAttributesRange res) {
+        int endIndex = -1, index, startIndex, escIndex = res.start;
+        TextAttributesEncoder encoder;
         char c;
+        res.id = 0;
         root: while (escIndex < text.length() && text.startsWith(ESC, escIndex)) {
-            ansiCodes.clear();
             startIndex = index = escIndex + ESC.length();
             do {
                 while (index < text.length() && isDigit(text.charAt(index))) index++;
                 if (index == text.length()) break root;
                 c = text.charAt(index);
                 if (c == SEQ_DELIM || c == SEQ_END) {
-                    ansiCode = toAnsiCodeIfSupported(text.substring(startIndex, index));
-                    if (ansiCode == -1) break root;
-                    ansiCodes.add(ansiCode);
+                    encoder = encoder(text.substring(startIndex, index));
+                    if (encoder == null) break root;
+                    res.id = encoder.encode(res.id);
                     startIndex = ++index;
                     if (c == SEQ_END) {
                         endIndex = escIndex = index;
-                        attr = applyCodes(ansiCodes, attr);
                     }
                 } else break root;
             } while(c == SEQ_DELIM);
         }
-        if(endIndex == -1) return null;
-        return new Pair<>(attr, endIndex);
+        if(endIndex == -1) res.end = -1;
+        else res.end = endIndex;
     }
 
-    private TextAttributes applyCodes(List<Integer> ansiCodes, TextAttributes attr) {
-        for(int code : ansiCodes) {
-            attr = applySupportedCode(code, attr);
+    private TextAttributesEncoder encoder(String codeStr) {
+        try {
+            int code = Integer.parseInt(codeStr);
+            if(code >= ENCODER.length || code < 0) return null;
+            return ENCODER[code];
+        } catch (Throwable e) {
+            return null;
         }
-        if(attr.getEffectType() == EffectType.LINE_UNDERSCORE || attr.getEffectType() == EffectType.BOLD_LINE_UNDERSCORE) {//if so this is not RESET_MARKER
-            if((attr.getFontType() & Font.BOLD) == Font.BOLD) {
-                attr.setEffectType(EffectType.BOLD_LINE_UNDERSCORE);
-            } else {
-                attr.setEffectType(EffectType.LINE_UNDERSCORE);
-            }
-            if(attr.getForegroundColor() != null) {
-                attr.setEffectColor(attr.getForegroundColor());
-            } else {
-                attr.setEffectColor(Color.BLACK);
-            }
-        }
-        return attr;
-    }
-
-    private TextAttributes applySupportedCode(int code, TextAttributes attr) {
-        if(code == RESET) return RESET_MARKER;
-        if(attr == RESET_MARKER) attr = new TextAttributes();
-        if(code == UNDERLINE) attr.setEffectType(EffectType.LINE_UNDERSCORE);
-        else {
-            int fontType = fontTypeFromCode(code);
-            if(fontType != -1) {
-                attr.setFontType(attr.getFontType() | fontType);
-            } else {
-                Color foreground = foregroundFromCode(code);
-                if(foreground != null) {
-                    attr.setForegroundColor(foreground);
-                } else {
-                    Color background = backgroundFromCode(code);
-                    attr.setBackgroundColor(background);
-                }
-            }
-        }
-        return attr;
     }
 
     private boolean isDigit(char c) {
         return c >= '0' && c <= '9';
     }
 
-    private int toAnsiCodeIfSupported(String ansiCodeStr) {
-        try {
-            int code = Integer.parseInt(ansiCodeStr);
-            return isAnsiCodeSupported(code) ? code : -1;
-        } catch (NumberFormatException e) {
-            return -1;
+
+    private static class Range {
+        int start, end;
+
+        public Range(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        public Range(){}
+    }
+
+    private static class TextAttributesRange  extends Range {
+        private int id = 0;
+    }
+
+    private static class TextAttributesEncoder {
+        private final int resetMask;
+        private final int mask;
+
+        public TextAttributesEncoder(int resetMask, int mask) {
+            this.resetMask = resetMask;
+            this.mask = mask;
+        }
+
+        public int encode(int id) {
+            return (id & resetMask) | mask;
         }
     }
 
-    private boolean isAnsiCodeSupported(int ansiCode) {
-        if(ansiCode == RESET || ansiCode == UNDERLINE) return true;
-        if(fontTypeFromCode(ansiCode) != -1) return true;
-        if(foregroundFromCode(ansiCode) != null) return true;
-        if(backgroundFromCode(ansiCode) != null) return true;
-        return false;
+    private static void preloadAllTextAttributes() {
+        TextAttributesOperation[] operations = new TextAttributesOperation[5];
+        operations[0] = null;
+        setupAllAttributesItalic(operations, 0);
+        operations[0] = (attributes) -> attributes.setFontType(attributes.getFontType() | Font.BOLD);
+        setupAllAttributesItalic(operations, 1);
     }
 
-    private int fontTypeFromCode(int fontTypeCode) {
-        if(fontTypeCode >= fontCodeToType.size()) return -1;
-        Integer fontType = fontCodeToType.get(fontTypeCode);
-        return fontType == null ? -1 : fontType;
+    private static void setupAllAttributesItalic(TextAttributesOperation[] operations, int id) {
+        operations[1] = null;
+        setupAllAttributesForeground(operations, id);
+        operations[1] = (attributes) -> attributes.setFontType(attributes.getFontType() | Font.ITALIC);
+        setupAllAttributesForeground(operations, id | 2);
     }
 
-    private Color foregroundFromCode(int foregroundCode) {
-        if(foregroundCode >= codeToForeground.size()) return null;
-        TextAttributesKey key = codeToForeground.get(foregroundCode).first;
-        Color cl = colorsScheme.getAttributes(key).getForegroundColor();
-        if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
-        if(cl == null) cl = codeToForeground.get(foregroundCode).second;
-        return cl;
+    private static void setupAllAttributesForeground(TextAttributesOperation[] operations, int id) {
+        TextAttributesForegroundOperation foregroundOperation = new TextAttributesForegroundOperation();
+        operations[2] = foregroundOperation;
+        for(int i = 0; i < ALL_COLORS.length; i++) {
+            foregroundOperation.foreground = ALL_COLORS[i].getForegroundColor();
+            setupAllAttributesBackground(operations, id | ((i + 1) << 3));
+        }
+        operations[2] = null;
+        setupAllAttributesBackground(operations, id);
     }
 
-    private Color backgroundFromCode(int backgroundCode) {
-        if(backgroundCode >= codeToBackground.size()) return null;
-        TextAttributesKey key = codeToBackground.get(backgroundCode).first;
-        Color cl = colorsScheme.getAttributes(key).getBackgroundColor();
-        if(cl == null) cl = key.getDefaultAttributes().getBackgroundColor();
-        if(cl == null) cl = codeToBackground.get(backgroundCode).second;
-        return cl;
+    private static void setupAllAttributesBackground(TextAttributesOperation[] operations, int id) {
+        TextAttributesBackgroundOperation backgroundOperation = new TextAttributesBackgroundOperation();
+        operations[3] = backgroundOperation;
+        for(int i = 0; i < 8; i++) {
+            backgroundOperation.background = ALL_COLORS[i].getBackgroundColor();
+            setupAllAttributesUnderline(operations, id | ((i + 1) << 7));
+        }
+        operations[3] = null;
+        setupAllAttributesUnderline(operations, id);
     }
 
+    private static void setupAllAttributesUnderline(TextAttributesOperation[] operations, int id) {
+        //must be the last operation to apply
+        operations[4] = null;
+        setupAttributes(operations, id);
+        operations[4] = (attributes) -> {
+            boolean isBold = (attributes.getFontType() & Font.BOLD) == Font.BOLD;
+            attributes.setEffectType(isBold ? EffectType.BOLD_LINE_UNDERSCORE : EffectType.LINE_UNDERSCORE);
+            attributes.setEffectColor(attributes.getForegroundColor());
+        };
+        setupAttributes(operations, id | 4);
+    }
+
+    private static void setupAttributes(TextAttributesOperation[] operations, int id) {
+        ALL_ATTRIBUTES[id] = new TextAttributes();
+        for(TextAttributesOperation op : operations) {
+            if(op != null) {
+                op.apply(ALL_ATTRIBUTES[id]);
+            }
+        }
+    }
+
+    private interface TextAttributesOperation {
+        void apply(TextAttributes attributes);
+    }
+
+    private static class TextAttributesForegroundOperation implements TextAttributesOperation {
+        private Color foreground;
+
+        @Override
+        public void apply(TextAttributes attributes) {
+            attributes.setForegroundColor(foreground);
+        }
+    }
+
+    private static class TextAttributesBackgroundOperation implements TextAttributesOperation {
+        private Color background;
+
+        @Override
+        public void apply(TextAttributes attributes) {
+            attributes.setBackgroundColor(background);
+        }
+    }
+
+    private static class ColorKey {
+        private final TextAttributesKey key;
+        private final Color defaultForeground;
+        private final Color defaultBackground;
+
+        public ColorKey(TextAttributesKey key, Color defaultForeground, Color defaultBackground) {
+            this.key = key;
+            this.defaultForeground = defaultForeground;
+            this.defaultBackground = defaultBackground;
+        }
+
+        public Color getForegroundColor() {
+            Color cl = colorsScheme.getAttributes(key).getForegroundColor();
+            if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
+            if(cl == null) return defaultForeground;
+            return cl;
+        }
+
+        public Color getBackgroundColor() {
+            Color cl = colorsScheme.getAttributes(key).getBackgroundColor();
+            if(cl == null) cl = key.getDefaultAttributes().getBackgroundColor();
+            if(cl == null) return defaultBackground;
+            return cl;
+        }
+    }
 }
