@@ -15,6 +15,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.ui.JBColor;
 import org.jetbrains.annotations.NotNull;
@@ -42,6 +43,10 @@ public class ANSIHighlighter {
 
     private static final int BACKGROUND_START_CODE = 40;
     private static final int BACKGROUND_END_CODE = 47;
+
+    private static long processId = 0;
+
+    private static Key<Long> ANSI_HIGHLIGHTER_PROCESS_KEY = Key.create("ansi-highlighter-process-id");
 
     private static final TextAttributes[] ALL_ATTRIBUTES = new TextAttributes[1096];
     private static final TextAttributesEncoder[] ENCODER = new TextAttributesEncoder[49];
@@ -86,6 +91,7 @@ public class ANSIHighlighter {
 
     private final Application application;
 
+
     public ANSIHighlighter(Project project) {
         this.project = project;
         preloadAllTextAttributes();
@@ -93,6 +99,8 @@ public class ANSIHighlighter {
     }
 
     public void cleanupHighlights(Editor editor) {
+        application.assertIsDispatchThread();
+        editor.putUserData(ANSI_HIGHLIGHTER_PROCESS_KEY, processId);
         editor.getMarkupModel().removeAllHighlighters();
         if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
         FoldingModelEx fm = (FoldingModelEx) editor.getFoldingModel();
@@ -100,12 +108,15 @@ public class ANSIHighlighter {
     }
 
     public void highlightANSISequences(Editor editor) {
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", true){
+        application.assertIsDispatchThread();
+        editor.putUserData(ANSI_HIGHLIGHTER_PROCESS_KEY, processId);
+        final long id = processId ++;
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", false){
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 Pair<List<MyHighlightInfo>, List<FoldRegion>> result = parseHighlights(editor);
                 if(isEmptyHighlightResult(result)) return;
-                applyHighlights(editor, result.first, result.second, indicator);
+                applyHighlights(editor, result.first, result.second, indicator, id);
             }
         });
     }
@@ -152,17 +163,19 @@ public class ANSIHighlighter {
         return Pair.create(highlighters, foldRegions);
     }
 
-    private void applyHighlights(Editor editor, List<MyHighlightInfo> highlighters, List<FoldRegion> foldRegions, ProgressIndicator indicator) {
+    private void applyHighlights(Editor editor, List<MyHighlightInfo> highlighters, List<FoldRegion> foldRegions, ProgressIndicator indicator, long id) {
         try {
             int hIndex = 0, fIndex = 0;
             int hSize = highlighters == null ? 0 : highlighters.size(),
                     fSize = foldRegions == null ? 0 : foldRegions.size();
             while(hIndex < hSize || fIndex < fSize) {
+                if(!editor.getUserData(ANSI_HIGHLIGHTER_PROCESS_KEY).equals(id)) return;
                 final int hStartIndex = hIndex,
                         fStartIndex = fIndex;
                 application.invokeAndWait(()-> {
-                        applyHighlights(highlighters, hStartIndex, null);
-                        applyFoldRegions(editor, foldRegions, fStartIndex, indicator);
+                    if(!editor.getUserData(ANSI_HIGHLIGHTER_PROCESS_KEY).equals(id)) return;
+                    applyHighlights(highlighters, hStartIndex, null);
+                    applyFoldRegions(editor, foldRegions, fStartIndex, indicator);
                 });
                 hIndex += HIGHLIGHT_OPERATION_COUNT;
                 fIndex += FOLD_OPERATION_COUNT;
