@@ -1,15 +1,23 @@
 package com.alayouni.ansihighlight;
 
-import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.execution.process.ConsoleHighlighter;
+import com.intellij.openapi.application.Application;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.FoldRegion;
 import com.intellij.openapi.editor.FoldingModel;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
+import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.editor.markup.*;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Pair;
+import com.intellij.ui.JBColor;
+import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -39,14 +47,14 @@ public class ANSIHighlighter {
     private static final TextAttributesEncoder[] ENCODER = new TextAttributesEncoder[49];
     private static final EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
     private static final ColorKey[] ALL_COLORS = {
-            new ColorKey(ConsoleHighlighter.BLACK, Color.BLACK, Color.BLACK),
-            new ColorKey(ConsoleHighlighter.RED, Color.RED, Color.RED),
-            new ColorKey(ConsoleHighlighter.GREEN, Color.GREEN, Color.GREEN),
-            new ColorKey(ConsoleHighlighter.YELLOW, Color.YELLOW, Color.YELLOW),
-            new ColorKey(ConsoleHighlighter.BLUE, Color.BLUE, Color.BLUE),
-            new ColorKey(ConsoleHighlighter.MAGENTA, Color.MAGENTA, Color.MAGENTA),
-            new ColorKey(ConsoleHighlighter.CYAN, Color.CYAN, Color.CYAN),
-            new ColorKey(ConsoleHighlighter.WHITE, Color.WHITE, Color.WHITE)
+            new ColorKey(ConsoleHighlighter.BLACK, JBColor.BLACK, JBColor.BLACK),
+            new ColorKey(ConsoleHighlighter.RED, JBColor.RED, JBColor.RED),
+            new ColorKey(ConsoleHighlighter.GREEN, JBColor.GREEN, JBColor.GREEN),
+            new ColorKey(ConsoleHighlighter.YELLOW, JBColor.YELLOW, JBColor.YELLOW),
+            new ColorKey(ConsoleHighlighter.BLUE, JBColor.BLUE, JBColor.BLUE),
+            new ColorKey(ConsoleHighlighter.MAGENTA, JBColor.MAGENTA, JBColor.MAGENTA),
+            new ColorKey(ConsoleHighlighter.CYAN, JBColor.CYAN, JBColor.CYAN),
+            new ColorKey(ConsoleHighlighter.WHITE, JBColor.WHITE, JBColor.WHITE)
     };
 
     static {
@@ -68,164 +76,178 @@ public class ANSIHighlighter {
         ENCODER[BACKGROUND_END_CODE + 1] = new TextAttributesEncoder(resetMask, 0);//no background
     }
 
-    private final HighlightManager highlighter;
+    private static final int HIGHLIGHT_OPERATION_COUNT = 100;
+
+    private static final int FOLD_OPERATION_COUNT = 100;
+
+    private static final int SLEEP_MILLIS = 10;
 
     private final Project project;
 
+    private final Application application;
+
     public ANSIHighlighter(Project project) {
         this.project = project;
-        this.highlighter = HighlightManager.getInstance(project);
         preloadAllTextAttributes();
+        application = ApplicationManager.getApplication();
+    }
+
+    public void cleanupHighlights(Editor editor) {
+        editor.getMarkupModel().removeAllHighlighters();
+        if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
+        FoldingModelEx fm = (FoldingModelEx) editor.getFoldingModel();
+        fm.runBatchFoldingOperation(fm::clearFoldRegions, false);
     }
 
     public void highlightANSISequences(Editor editor) {
-
-//        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", false) {
-//            @Override
-//            public void run(@NotNull ProgressIndicator indicator) {
-//                List<Range> foldRegions = highlightANSISequences(editor, indicator);
-//                if(foldRegions == null || foldRegions.isEmpty()) return;
-//                applyFoldRegions(editor, foldRegions, indicator);
-//            }
-//        });
-        List<Range> foldRegions = highlightANSISequences(editor, null);
-        if(foldRegions == null || foldRegions.isEmpty()) return;
-        applyFoldRegions(editor, foldRegions, null);
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", true){
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                Pair<List<MyHighlightInfo>, List<FoldRegion>> result = parseHighlights(editor);
+                if(isEmptyHighlightResult(result)) return;
+                applyHighlights(editor, result.first, result.second, indicator);
+            }
+        });
     }
 
-    private List<Range> highlightANSISequences(Editor editor, ProgressIndicator indicator) {
+    private boolean isEmptyHighlightResult(Pair<List<MyHighlightInfo>, List<FoldRegion>> result) {
+        if(result == null) return true;
+        return (result.first == null || result.first.isEmpty()) && (result.second == null || result.second.isEmpty());
+    }
+
+    private Pair<List<MyHighlightInfo>, List<FoldRegion>> parseHighlights(Editor editor) {
         String text = editor.getDocument().getText();
         MarkupModel markup = editor.getMarkupModel();
         int escIndex = text.indexOf(ESC),
-                startIndex = 0;
+                start0 = 0;
         if(escIndex == -1) return null;
 
-        int progress = 0, newProgress;
-        if(indicator != null) indicator.setFraction(progress);
-        double tot = text.length();
-
-        TextAttributesRange res = new TextAttributesRange();
-        res.start = escIndex;
-        res.end = -1;
-        TextAttributes attr0 = null;
-
-        java.util.List<Range> foldRegions = new ArrayList<>();
-        while (res.start >= 0) {
-            if(res.end != -1) attr0 = ALL_ATTRIBUTES[res.id];
-            res.id = 0;
-            extractTextAttributesFromANSIEscapeSequence(text, res);
-            if(res.end == -1) {
-                res.start = text.indexOf(ESC, res.start + 1);
+        TextAttributesRange range = new TextAttributesRange();
+        range.start = escIndex;
+        int id0 = -1;
+        FoldingModelEx foldingModel = (FoldingModelEx) editor.getFoldingModel();
+        FoldRegion foldRegion;
+        List<FoldRegion> foldRegions = new ArrayList<>();
+        List<MyHighlightInfo> highlighters = new ArrayList<>();
+        while (range.start >= 0) {
+            extractTextAttributesFromANSIEscapeSequence(text, range);
+            if(range.id == -1) {
+                range.start = range.end < text.length() ? text.indexOf(ESC, range.end) : -1;
             } else {
-                if(attr0 != null) {
-                    //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 mask)
-                    markup.addRangeHighlighter(startIndex, res.start, HighlighterLayer.ADDITIONAL_SYNTAX, attr0, HighlighterTargetArea.EXACT_RANGE);
-//                    highlighter.addOccurrenceHighlight(editor, startIndex, res.start, attr0, 0,null, null);
+                if(id0 > 0) {
+                    highlighters.add(new MyHighlightInfo(markup, start0, range.start, id0));
                 }
-                foldRegions.add(new Range(res.start, res.end));
+                foldRegion = foldingModel.createFoldRegion(range.start, range.end, "", null, true);
+                foldRegions.add(foldRegion);
 
-                startIndex = res.end;
-                if(startIndex == text.length()) break;
-                attr0 = res.id == 0 ? null : ALL_ATTRIBUTES[res.id];
-                res.start = text.indexOf(ESC, startIndex);
+                start0 = range.end;
+                if(start0 == text.length()) break;
+                id0 = range.id == 0 ? -1 : range.id;
+                range.start = text.indexOf(ESC, start0);
             }
-            if(res.start == -1 && attr0 != null) {
-                //only addOccurrenceHighlight() among all other highlight methods gives the option to turn off highlight hiding when user presses escape (through 0 mask)
-                markup.addRangeHighlighter(startIndex, text.length(), HighlighterLayer.ADDITIONAL_SYNTAX, attr0, HighlighterTargetArea.EXACT_RANGE);
-//                highlighter.addOccurrenceHighlight(editor, startIndex, text.length(), attr0, 0, null, null);
-            }
-            if(indicator != null && res.start > 0) {
-                newProgress = (int) Math.round(res.start / tot);
-                if(newProgress != progress) indicator.setFraction(progress = newProgress);
+            if(range.start == -1 && id0 > 0) {
+                highlighters.add(new MyHighlightInfo(markup, start0, text.length(), id0));
             }
         }
-        return foldRegions;
+        return Pair.create(highlighters, foldRegions);
     }
 
-    private void applyFoldRegions(Editor editor, List<Range> foldRegions, ProgressIndicator indicator) {
-        FoldingModel folder = editor.getFoldingModel();
+    private void applyHighlights(Editor editor, List<MyHighlightInfo> highlighters, List<FoldRegion> foldRegions, ProgressIndicator indicator) {
+        try {
+            int hIndex = 0, fIndex = 0;
+            int hSize = highlighters == null ? 0 : highlighters.size(),
+                    fSize = foldRegions == null ? 0 : foldRegions.size();
+            while(hIndex < hSize || fIndex < fSize) {
+                final int hStartIndex = hIndex,
+                        fStartIndex = fIndex;
+                application.invokeLater(()-> {
+                        applyHighlights(highlighters, hStartIndex, null);
+                        applyFoldRegions(editor, foldRegions, fStartIndex, indicator);
+                });
+                hIndex += HIGHLIGHT_OPERATION_COUNT;
+                fIndex += FOLD_OPERATION_COUNT;
+                Thread.sleep(SLEEP_MILLIS);
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void applyHighlights(List<MyHighlightInfo> highlighters, int startIndex, ProgressIndicator indicator) {
+        if(startIndex >= highlighters.size()) return;
+        int lastIndex = Math.min(startIndex + HIGHLIGHT_OPERATION_COUNT, highlighters.size());
+        for(int i = startIndex; i < lastIndex; i++ ) {
+            highlighters.get(i).apply();
+        }
+        if(indicator != null) indicator.setFraction(lastIndex / (double) highlighters.size());
+    }
+
+
+    private void applyFoldRegions(Editor editor, List<FoldRegion> foldRegions, int startIndex, ProgressIndicator indicator) {
+        if(startIndex >= foldRegions.size()) return;
+        final FoldingModel folder = editor.getFoldingModel();
+        int lastIndex = Math.min(startIndex + FOLD_OPERATION_COUNT, foldRegions.size());
         folder.runBatchFoldingOperation(() -> {
-            int progress = 0, newProgress;
-            double total = foldRegions.size();
-            if(indicator != null) indicator.setFraction(progress);
-            int i = 0;
-            for(Range range : foldRegions) {
-                folder.addFoldRegion(range.start, range.end, "").setExpanded(false);
-                i ++;
-                newProgress = (int) Math.round(i / total);
-                if(indicator != null && newProgress != progress) indicator.setFraction(progress = newProgress);
+            FoldRegion region;
+            for(int i = startIndex; i < lastIndex; i++) {
+                region = foldRegions.get(i);
+                folder.addFoldRegion(region);
+                region.setExpanded(false);
             }
         }, true);
+        if(indicator != null) indicator.setFraction(lastIndex / (double)foldRegions.size());
     }
 
 
 
-    private void extractTextAttributesFromANSIEscapeSequence(String text, TextAttributesRange res) {
-        int endIndex = -1, index, startIndex, escIndex = res.start;
+    private void extractTextAttributesFromANSIEscapeSequence(String text, TextAttributesRange range) {
+        range.end = range.start;
         TextAttributesEncoder encoder;
-        char c;
-        res.id = 0;
-        root: while (escIndex < text.length() && text.startsWith(ESC, escIndex)) {
-            startIndex = index = escIndex + ESC.length();
+        range.id = 0;
+        while (range.end < text.length() && text.startsWith(ESC, range.end)) {
+            range.end += ESC.length();
             do {
-                while (index < text.length() && isDigit(text.charAt(index))) index++;
-                if (index == text.length()) break root;
-                c = text.charAt(index);
-                if (c == SEQ_DELIM || c == SEQ_END) {
-                    encoder = encoder(text.substring(startIndex, index));
-                    if (encoder == null) break root;
-                    res.id = encoder.encode(res.id);
-                    startIndex = ++index;
-                    if (c == SEQ_END) {
-                        endIndex = escIndex = index;
-                    }
-                } else break root;
-            } while(c == SEQ_DELIM);
-        }
-        if(endIndex == -1) res.end = -1;
-        else res.end = endIndex;
-    }
-
-    private TextAttributesEncoder encoder(String codeStr) {
-        try {
-            int code = Integer.parseInt(codeStr);
-            if(code >= ENCODER.length || code < 0) return null;
-            return ENCODER[code];
-        } catch (Throwable e) {
-            return null;
+                encoder = parseANSICodeEncoder(text, range);
+                if(encoder == null) {
+                    range.id = -1;
+                    return;
+                }
+                range.id = encoder.encode(range.id);
+            } while(text.charAt(range.end - 1) == SEQ_DELIM);
         }
     }
 
-    private boolean isDigit(char c) {
-        return c >= '0' && c <= '9';
-    }
-
-
-    private static class Range {
-        int start, end;
-
-        public Range(int start, int end) {
-            this.start = start;
-            this.end = end;
+    private TextAttributesEncoder parseANSICodeEncoder(String text, TextAttributesRange range) {
+        int code = 0, d;
+        boolean atLeastOneDigit = false;
+        char c;
+        while (range.end < text.length()) {
+            c = text.charAt(range.end ++);
+            if(c == SEQ_DELIM || c == SEQ_END) return atLeastOneDigit ? ENCODER[code] : null;
+            d = c - '0';
+            if(d < 0 || d > 9) return null;
+            atLeastOneDigit = true;
+            code = code * 10 + d;
+            if(code >= ENCODER.length) return null;
         }
-
-        public Range(){}
+        return null;
     }
 
-    private static class TextAttributesRange  extends Range {
-        private int id = 0;
+
+    private static class TextAttributesRange {
+        private int id = 0, start, end;
     }
 
     private static class TextAttributesEncoder {
         private final int resetMask;
         private final int mask;
 
-        public TextAttributesEncoder(int resetMask, int mask) {
+        private TextAttributesEncoder(int resetMask, int mask) {
             this.resetMask = resetMask;
             this.mask = mask;
         }
 
-        public int encode(int id) {
+        private int encode(int id) {
             return (id & resetMask) | mask;
         }
     }
@@ -310,25 +332,41 @@ public class ANSIHighlighter {
         }
     }
 
+    private static class MyHighlightInfo {
+        final MarkupModel markupModel;
+        final int start, end, attrId;
+
+        public MyHighlightInfo(MarkupModel markupModel, int start, int end, int attrId) {
+            this.markupModel = markupModel;
+            this.start = start;
+            this.end = end;
+            this.attrId = attrId;
+        }
+
+        public void apply() {
+            markupModel.addRangeHighlighter(start, end, HighlighterLayer.ADDITIONAL_SYNTAX, ALL_ATTRIBUTES[attrId], HighlighterTargetArea.EXACT_RANGE);
+        }
+    }
+
     private static class ColorKey {
         private final TextAttributesKey key;
         private final Color defaultForeground;
         private final Color defaultBackground;
 
-        public ColorKey(TextAttributesKey key, Color defaultForeground, Color defaultBackground) {
+        private ColorKey(TextAttributesKey key, Color defaultForeground, Color defaultBackground) {
             this.key = key;
             this.defaultForeground = defaultForeground;
             this.defaultBackground = defaultBackground;
         }
 
-        public Color getForegroundColor() {
+        private Color getForegroundColor() {
             Color cl = colorsScheme.getAttributes(key).getForegroundColor();
             if(cl == null) cl = key.getDefaultAttributes().getForegroundColor();
             if(cl == null) return defaultForeground;
             return cl;
         }
 
-        public Color getBackgroundColor() {
+        private Color getBackgroundColor() {
             Color cl = colorsScheme.getAttributes(key).getBackgroundColor();
             if(cl == null) cl = key.getDefaultAttributes().getBackgroundColor();
             if(cl == null) return defaultBackground;

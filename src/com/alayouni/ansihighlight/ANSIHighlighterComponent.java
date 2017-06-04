@@ -7,12 +7,9 @@ import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
-import com.intellij.openapi.editor.FoldRegion;
 import com.intellij.openapi.editor.event.EditorFactoryAdapter;
 import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
-import com.intellij.openapi.editor.ex.FoldingListener;
-import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileDocumentManagerAdapter;
 import com.intellij.openapi.project.Project;
@@ -43,28 +40,21 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
             public void editorCreated(@NotNull EditorFactoryEvent e) {
                 Editor editor = e.getEditor();
                 VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
-
                 if(!ANSIAwareFileType.isANSIAware(file)) return;
-                cleanupEditor(editor);
+                //listener must be added first
+//                ansiHighlighter.addFoldingListener(editor);
+
                 ansiHighlighter.highlightANSISequences(editor);
-
-                if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
-                FoldingModelEx fm = (FoldingModelEx)editor.getFoldingModel();
-                fm.addListener(new FoldingListener() {
-                    @Override
-                    public void onFoldRegionStateChange(@NotNull FoldRegion foldRegion) {
-                        if(!foldRegion.isExpanded() || !editor.isViewer()) return;
-
-                        //workaround to prevent unfolding when under preview mode and caret falls inside a folded region
-                        fm.runBatchFoldingOperation(() -> foldRegion.setExpanded(false));
-                    }
-
-                    @Override
-                    public void onFoldProcessingEnd() {}
-                }, project);
 
                 if(!(editor instanceof EditorEx)) return;
                 ((EditorEx)editor).setViewer(true);
+            }
+
+
+            @Override
+            public void editorReleased(@NotNull EditorFactoryEvent e) {
+                Editor editor = e.getEditor();
+
             }
         }, project);
 
@@ -77,7 +67,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 if(editors == null || editors.length == 0) return;
                 for(Editor editor : editors) {
                     if(editor.isViewer()) {
-                        cleanupEditor(editor);
+                        ansiHighlighter.cleanupHighlights(editor);
                         ansiHighlighter.highlightANSISequences(editor);
                     }
                 }
@@ -98,16 +88,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         if(ex.isViewer()) {//preview mode
             ansiHighlighter.highlightANSISequences(editor);
         } else {
-            cleanupEditor(editor);
+            ansiHighlighter.cleanupHighlights(editor);
         }
-    }
-
-    private void cleanupEditor(Editor editor) {
-        editor.getMarkupModel().removeAllHighlighters();
-        if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
-        FoldingModelEx fm = (FoldingModelEx) editor.getFoldingModel();
-        fm.runBatchFoldingOperation(()->{fm.clearFoldRegions();}, false);
-
     }
 
     @Override
