@@ -80,7 +80,7 @@ public class ANSIHighlighter {
 
     private static final int FOLD_OPERATION_COUNT = 100;
 
-    private static final int SLEEP_MILLIS = 10;
+    private static final int SLEEP_MILLIS = 4;
 
     private final Project project;
 
@@ -160,7 +160,7 @@ public class ANSIHighlighter {
             while(hIndex < hSize || fIndex < fSize) {
                 final int hStartIndex = hIndex,
                         fStartIndex = fIndex;
-                application.invokeLater(()-> {
+                application.invokeAndWait(()-> {
                         applyHighlights(highlighters, hStartIndex, null);
                         applyFoldRegions(editor, foldRegions, fStartIndex, indicator);
                 });
