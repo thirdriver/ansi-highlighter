@@ -36,7 +36,7 @@ public class ANSIHighlighter {
     private long currentBackgroundTaskId = 0;
     private HighlightQueue queue = new HighlightQueue();
 
-    private static final int SLEEP_MILLIS = 5;
+    private static final int SLEEP_MILLIS = 3;
 
     private final Project project;
 
@@ -154,10 +154,11 @@ public class ANSIHighlighter {
                                  ProgressIndicator indicator,
                                  long id) {
         try {
-            application.invokeAndWait(() -> {
-                if(!isEmptyHighlightResult(result))
+            if(!isEmptyHighlightResult(result)) {
+                application.invokeAndWait(() -> {
                     queue.addNewTask(editor, result.first, result.second);
-            });
+                });
+            }
 
             while(id == currentBackgroundTaskId && !queue.isEmpty()) {
                 application.invokeAndWait(() -> {
