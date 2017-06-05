@@ -67,7 +67,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 if(editors == null || editors.length == 0) return;
                 for(Editor editor : editors) {
                     if(editor.isViewer()) {
-                        ansiHighlighter.cleanupHighlights(editor);
                         ansiHighlighter.highlightANSISequences(editor);
                     }
                 }

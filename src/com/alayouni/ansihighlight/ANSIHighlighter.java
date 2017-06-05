@@ -4,17 +4,13 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.FoldRegion;
-import com.intellij.openapi.editor.FoldingModel;
 import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.editor.markup.EffectType;
-import com.intellij.openapi.editor.markup.MarkupModel;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
-import com.intellij.openapi.progress.impl.BackgroundableProcessIndicator;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import org.jetbrains.annotations.NotNull;
 
@@ -37,18 +33,8 @@ public class ANSIHighlighter {
     private static final int UNDERLINE = 4;
 
 
-    private static long processId = 0;
-
-    private static Key<Long> ANSI_HIGHLIGHTER_PROCESS_KEY = Key.create("ansi-highlighter-process-id");
-
-    private static final ANSITextAttributesEncoder[] ENCODER = new ANSITextAttributesEncoder[49];
-
-    private static final TextAttributes[] ALL_ATTRIBUTES = new TextAttributes[1096];
-
-
-    private static final int HIGHLIGHT_OPERATION_COUNT = 100;
-
-    private static final int FOLD_OPERATION_COUNT = 100;
+    private long currentBackgroundTaskId = 0;
+    private HighlightQueue queue = new HighlightQueue();
 
     private static final int SLEEP_MILLIS = 5;
 
@@ -59,14 +45,14 @@ public class ANSIHighlighter {
 
     public ANSIHighlighter(Project project) {
         this.project = project;
+        this.application = ApplicationManager.getApplication();
         preloadAllTextAttributes();
-        application = ApplicationManager.getApplication();
     }
 
     public void cleanupHighlights(Editor editor) {
         application.assertIsDispatchThread();
+        queue.removeEditorHighlightTaskIfQueed(editor);
         //update process id to cancel any ongoing highlight tasks on this editor
-        editor.putUserData(ANSI_HIGHLIGHTER_PROCESS_KEY, processId);
         editor.getMarkupModel().removeAllHighlighters();
         if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
         FoldingModelEx fm = (FoldingModelEx) editor.getFoldingModel();
@@ -75,19 +61,17 @@ public class ANSIHighlighter {
 
     public void highlightANSISequences(Editor editor) {
         application.assertIsDispatchThread();
-        editor.putUserData(ANSI_HIGHLIGHTER_PROCESS_KEY, processId);
-        final long id = processId ++;
+        //increment id to gracefully neutralize and end other EDT scheduled highlight tasks
+        final long id = ++currentBackgroundTaskId;
+        cleanupHighlights(editor);
 
-        Task.Backgroundable task = new Task.Backgroundable(project, "Highlighting ANSI Sequences...", true){
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", true) {
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 Pair<List<HighlightRangeData>, List<FoldRegion>> result = parseHighlights(editor);
-                if(isEmptyHighlightResult(result)) return;
-                applyHighlights(editor, result.first, result.second, indicator, id);
+                applyHighlights(editor, result, indicator, id);
             }
-        };
-        ProgressIndicator indicator = new BackgroundableProcessIndicator(task);
-        ProgressManager.getInstance().runProcessWithProgressAsynchronously(task, indicator);
+        });
     }
 
     private boolean isEmptyHighlightResult(Pair<List<HighlightRangeData>, List<FoldRegion>> result) {
@@ -131,56 +115,6 @@ public class ANSIHighlighter {
         return Pair.create(highlighters, foldRegions);
     }
 
-    private void applyHighlights(Editor editor, List<HighlightRangeData> highlighters, List<FoldRegion> foldRegions, ProgressIndicator indicator, long id) {
-        try {
-            int hIndex = 0, fIndex = 0;
-            int hSize = highlighters == null ? 0 : highlighters.size(),
-                    fSize = foldRegions == null ? 0 : foldRegions.size();
-            while(hIndex < hSize || fIndex < fSize) {
-                if(!editor.getUserData(ANSI_HIGHLIGHTER_PROCESS_KEY).equals(id)) return;
-                final int hStartIndex = hIndex,
-                        fStartIndex = fIndex;
-                application.invokeAndWait(()-> {
-                    if(!editor.getUserData(ANSI_HIGHLIGHTER_PROCESS_KEY).equals(id)) return;
-                    applyHighlights(editor, highlighters, hStartIndex, null);
-                    applyFoldRegions(editor, foldRegions, fStartIndex, indicator);
-                });
-                hIndex += HIGHLIGHT_OPERATION_COUNT;
-                fIndex += FOLD_OPERATION_COUNT;
-                Thread.sleep(SLEEP_MILLIS);
-            }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void applyHighlights(Editor editor, List<HighlightRangeData> highlighters, int startIndex, ProgressIndicator indicator) {
-        MarkupModel markupModel = editor.getMarkupModel();
-        if(startIndex >= highlighters.size()) return;
-        int lastIndex = Math.min(startIndex + HIGHLIGHT_OPERATION_COUNT, highlighters.size());
-        for(int i = startIndex; i < lastIndex; i++ ) {
-            highlighters.get(i).apply(markupModel, ALL_ATTRIBUTES);
-        }
-        if(indicator != null) indicator.setFraction(lastIndex / (double) highlighters.size());
-    }
-
-
-    private void applyFoldRegions(Editor editor, List<FoldRegion> foldRegions, int startIndex, ProgressIndicator indicator) {
-        if(startIndex >= foldRegions.size()) return;
-        final FoldingModel folder = editor.getFoldingModel();
-        int lastIndex = Math.min(startIndex + FOLD_OPERATION_COUNT, foldRegions.size());
-        folder.runBatchFoldingOperation(() -> {
-            FoldRegion region;
-            for(int i = startIndex; i < lastIndex; i++) {
-                region = foldRegions.get(i);
-                folder.addFoldRegion(region);
-                region.setExpanded(false);
-            }
-        }, true);
-        if(indicator != null) indicator.setFraction(lastIndex / (double)foldRegions.size());
-    }
-
-
 
     private void extractTextAttributesFromANSIEscapeSequence(String text, HighlightRangeData range) {
         range.end = range.start;
@@ -215,8 +149,44 @@ public class ANSIHighlighter {
         return null;
     }
 
+    private void applyHighlights(Editor editor,
+                                 Pair<List<HighlightRangeData>, List<FoldRegion>> result,
+                                 ProgressIndicator indicator,
+                                 long id) {
+        try {
+            application.invokeAndWait(() -> {
+                if(!isEmptyHighlightResult(result))
+                    queue.addNewTask(editor, result.first, result.second);
+            });
+
+            while(id == currentBackgroundTaskId && !queue.isEmpty()) {
+                application.invokeAndWait(() -> {
+                    if(id != currentBackgroundTaskId) return;
+                    HighlightTaskData task = queue.next();
+                    if(task.getEditor().isDisposed()) {
+                        queue.removeTask(task);
+                        return;
+                    }
+                    task.run(ALL_ATTRIBUTES);
+                    queue.taskProcessedUpdateQueue(task);
+                });
+
+                indicator.setFraction(queue.getProgressFraction());
+                //sleep a bit to prevent freezing the UI for large highlight tasks
+                Thread.sleep(SLEEP_MILLIS);
+            }
+
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
 
     //______________________________Pre-calculations to accelerate parsing______________________________________
+
+    private static final ANSITextAttributesEncoder[] ENCODER = new ANSITextAttributesEncoder[49];
+
+    private static final TextAttributes[] ALL_ATTRIBUTES = new TextAttributes[1096];
 
     static {
         ENCODER[RESET] = new ANSITextAttributesEncoder(0, 0);
