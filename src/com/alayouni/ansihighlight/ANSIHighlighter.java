@@ -161,7 +161,7 @@ public class ANSIHighlighter {
 
             while(id == currentBackgroundTaskId && !queue.isEmpty()) {
                 application.invokeAndWait(() -> {
-                    if(id != currentBackgroundTaskId) return;
+                    if(id != currentBackgroundTaskId || queue.isEmpty()) return;
                     HighlightTaskData task = queue.next();
                     if(task.getEditor().isDisposed()) {
                         queue.removeTask(task);
