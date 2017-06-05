@@ -36,17 +36,12 @@ public class ANSIHighlighter {
     private static final int ITALIC = 3;
     private static final int UNDERLINE = 4;
 
-    private static final int FOREGROUND_START_CODE = 30;
-    private static final int FOREGROUND_END_CODE = 37;
-
-    private static final int BACKGROUND_START_CODE = 40;
-    private static final int BACKGROUND_END_CODE = 47;
 
     private static long processId = 0;
 
     private static Key<Long> ANSI_HIGHLIGHTER_PROCESS_KEY = Key.create("ansi-highlighter-process-id");
 
-    private static final TextAttributesEncoder[] ENCODER = new TextAttributesEncoder[49];
+    private static final ANSITextAttributesEncoder[] ENCODER = new ANSITextAttributesEncoder[49];
 
     private static final TextAttributes[] ALL_ATTRIBUTES = new TextAttributes[1096];
 
@@ -189,7 +184,7 @@ public class ANSIHighlighter {
 
     private void extractTextAttributesFromANSIEscapeSequence(String text, HighlightRangeData range) {
         range.end = range.start;
-        TextAttributesEncoder encoder;
+        ANSITextAttributesEncoder encoder;
         range.id = 0;
         while (range.end < text.length() && text.startsWith(ESC, range.end)) {
             range.end += ESC.length();
@@ -204,7 +199,7 @@ public class ANSIHighlighter {
         }
     }
 
-    private TextAttributesEncoder parseANSICode(String text, HighlightRangeData range) {
+    private ANSITextAttributesEncoder parseANSICode(String text, HighlightRangeData range) {
         int code = 0, d;
         boolean atLeastOneDigit = false;
         char c;
@@ -224,22 +219,12 @@ public class ANSIHighlighter {
     //______________________________Pre-calculations to accelerate parsing______________________________________
 
     static {
-        ENCODER[RESET] = new TextAttributesEncoder(0, 0);
-        ENCODER[BOLD] = new TextAttributesEncoder(0xFFFFFFFE, 1);
-        ENCODER[ITALIC] = new TextAttributesEncoder(0xFFFFFFFD, 2);
-        ENCODER[UNDERLINE] = new TextAttributesEncoder(0xFFFFFFFB, 4);
+        ENCODER[RESET] = new ANSITextAttributesEncoder(0, 0);
+        ENCODER[BOLD] = new ANSITextAttributesEncoder(0xFFFFFFFE, 1);
+        ENCODER[ITALIC] = new ANSITextAttributesEncoder(0xFFFFFFFD, 2);
+        ENCODER[UNDERLINE] = new ANSITextAttributesEncoder(0xFFFFFFFB, 4);
 
-        int resetMask = 0xFFFFFF87;
-        for(int colorCode = FOREGROUND_START_CODE; colorCode <= FOREGROUND_END_CODE; colorCode ++) {
-            ENCODER[colorCode] = new TextAttributesEncoder(resetMask, (colorCode - FOREGROUND_START_CODE + 1) << 3);
-        }
-        ENCODER[FOREGROUND_END_CODE + 1] = new TextAttributesEncoder(resetMask, 0);//no foreground
-
-        resetMask = 0xFFFFF87F;
-        for(int colorCode = BACKGROUND_START_CODE; colorCode <= BACKGROUND_END_CODE; colorCode ++) {
-            ENCODER[colorCode] = new TextAttributesEncoder(resetMask, (colorCode - BACKGROUND_START_CODE + 1) << 7);
-        }
-        ENCODER[BACKGROUND_END_CODE + 1] = new TextAttributesEncoder(resetMask, 0);//no background
+        ANSIColor.setupColorsEncoders(ENCODER);
     }
 
     private static void preloadAllTextAttributes() {
@@ -276,20 +261,6 @@ public class ANSIHighlighter {
             if(op != null) {
                 op.apply(ALL_ATTRIBUTES[id]);
             }
-        }
-    }
-
-    private static class TextAttributesEncoder {
-        private final int resetMask;
-        private final int mask;
-
-        private TextAttributesEncoder(int resetMask, int mask) {
-            this.resetMask = resetMask;
-            this.mask = mask;
-        }
-
-        private int encode(int id) {
-            return (id & resetMask) | mask;
         }
     }
 }

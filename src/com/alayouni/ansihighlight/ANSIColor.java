@@ -19,18 +19,6 @@ class ANSIColor {
     private final Color defaultForeground;
     private final Color defaultBackground;
 
-    private static final EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
-    private static final ANSIColor[] ALL_COLORS = {
-            new ANSIColor(ConsoleHighlighter.BLACK, JBColor.BLACK, JBColor.BLACK),
-            new ANSIColor(ConsoleHighlighter.RED, JBColor.RED, JBColor.RED),
-            new ANSIColor(ConsoleHighlighter.GREEN, JBColor.GREEN, JBColor.GREEN),
-            new ANSIColor(ConsoleHighlighter.YELLOW, JBColor.YELLOW, JBColor.YELLOW),
-            new ANSIColor(ConsoleHighlighter.BLUE, JBColor.BLUE, JBColor.BLUE),
-            new ANSIColor(ConsoleHighlighter.MAGENTA, JBColor.MAGENTA, JBColor.MAGENTA),
-            new ANSIColor(ConsoleHighlighter.CYAN, JBColor.CYAN, JBColor.CYAN),
-            new ANSIColor(ConsoleHighlighter.WHITE, JBColor.WHITE, JBColor.WHITE)
-    };
-
     ANSIColor(TextAttributesKey key, Color defaultForeground, Color defaultBackground) {
         this.key = key;
         this.defaultForeground = defaultForeground;
@@ -49,6 +37,41 @@ class ANSIColor {
         if(cl == null) cl = key.getDefaultAttributes().getBackgroundColor();
         if(cl == null) return defaultBackground;
         return cl;
+    }
+
+    //______________________pre-calculations to accelerate parsing___________________________________
+
+    private static final int FOREGROUND_START_CODE = 30;
+    private static final int FOREGROUND_END_CODE = 37;
+
+    private static final int BACKGROUND_START_CODE = 40;
+    private static final int BACKGROUND_END_CODE = 47;
+
+    private static final EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
+    private static final ANSIColor[] ALL_COLORS = {
+            new ANSIColor(ConsoleHighlighter.BLACK, JBColor.BLACK, JBColor.BLACK),
+            new ANSIColor(ConsoleHighlighter.RED, JBColor.RED, JBColor.RED),
+            new ANSIColor(ConsoleHighlighter.GREEN, JBColor.GREEN, JBColor.GREEN),
+            new ANSIColor(ConsoleHighlighter.YELLOW, JBColor.YELLOW, JBColor.YELLOW),
+            new ANSIColor(ConsoleHighlighter.BLUE, JBColor.BLUE, JBColor.BLUE),
+            new ANSIColor(ConsoleHighlighter.MAGENTA, JBColor.MAGENTA, JBColor.MAGENTA),
+            new ANSIColor(ConsoleHighlighter.CYAN, JBColor.CYAN, JBColor.CYAN),
+            new ANSIColor(ConsoleHighlighter.WHITE, JBColor.WHITE, JBColor.WHITE)
+    };
+
+    static void setupColorsEncoders(ANSITextAttributesEncoder[] encoders) {
+        int resetMask = 0xFFFFFF87;
+        for(int colorCode = FOREGROUND_START_CODE; colorCode <= FOREGROUND_END_CODE; colorCode ++) {
+            encoders[colorCode] = new ANSITextAttributesEncoder(resetMask, (colorCode - FOREGROUND_START_CODE + 1) << 3);
+        }
+        encoders[FOREGROUND_END_CODE + 1] = new ANSITextAttributesEncoder(resetMask, 0);//no foreground
+
+        resetMask = 0xFFFFF87F;
+        for(int colorCode = BACKGROUND_START_CODE; colorCode <= BACKGROUND_END_CODE; colorCode ++) {
+            encoders[colorCode] = new ANSITextAttributesEncoder(resetMask, (colorCode - BACKGROUND_START_CODE + 1) << 7);
+        }
+        encoders[BACKGROUND_END_CODE + 1] = new ANSITextAttributesEncoder(resetMask, 0);//no background
+
     }
 
     static void setupAllAttributesForeground(TextAttributesOperation[] operations, int id) {
