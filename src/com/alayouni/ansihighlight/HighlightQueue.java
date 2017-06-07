@@ -19,7 +19,7 @@ class HighlightQueue {
 
     private Application application = ApplicationManager.getApplication();
 
-    public synchronized void removeEditorHighlightTaskIfQueed(Editor editor) {
+    public void removeEditorHighlightTaskIfQueed(Editor editor) {
         application.assertIsDispatchThread();
         HighlightTaskData task = editor.getUserData(EDITOR_HIGHLIGHT_TASK_DATA);
         if(task != null) removeTask(task);

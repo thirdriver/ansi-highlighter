@@ -7,12 +7,21 @@ import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.editor.FoldRegion;
 import com.intellij.openapi.editor.event.EditorFactoryAdapter;
 import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
+import com.intellij.openapi.editor.ex.FoldingListener;
+import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileDocumentManagerAdapter;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.FileEditorManagerListener;
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
+import com.intellij.openapi.fileEditor.impl.EditorHistoryManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.project.ProjectManagerAdapter;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
@@ -35,27 +44,19 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void initComponent() {
+
         EditorFactory.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
             @Override
             public void editorCreated(@NotNull EditorFactoryEvent e) {
                 Editor editor = e.getEditor();
                 VirtualFile file = FileDocumentManager.getInstance().getFile(editor.getDocument());
                 if(!ANSIAwareFileType.isANSIAware(file)) return;
-                //listener must be added first
-//                ansiHighlighter.addFoldingListener(editor);
-
                 ansiHighlighter.highlightANSISequences(editor);
-
+                disableUnfoldingOnPreviewMode(editor);
                 if(!(editor instanceof EditorEx)) return;
                 ((EditorEx)editor).setViewer(true);
             }
 
-
-            @Override
-            public void editorReleased(@NotNull EditorFactoryEvent e) {
-                Editor editor = e.getEditor();
-
-            }
         }, project);
 
         //sync editor highlights to external changes brought to file
@@ -74,7 +75,101 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         });
 
         connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
+
+//        applyWorkaroundToDisableFoldingStateRestoration();
     }
+
+    /**
+     * workaround to prevent unfolding when under preview mode and caret falls inside a folded region
+     * @param editor
+     */
+    private void disableUnfoldingOnPreviewMode(Editor editor) {
+        if(!(editor.getFoldingModel() instanceof FoldingModelEx)) return;
+        FoldingModelEx fm = (FoldingModelEx)editor.getFoldingModel();
+        fm.addListener(new FoldingListener() {
+            @Override
+            public void onFoldRegionStateChange(@NotNull FoldRegion foldRegion) {
+                if(!fm.isFoldingEnabled() || !foldRegion.isExpanded() || !editor.isViewer()) return;
+
+                fm.runBatchFoldingOperation(() -> foldRegion.setExpanded(false));
+            }
+
+            @Override
+            public void onFoldProcessingEnd() {}
+        }, project);
+    }
+
+    /**
+     * For ansi aware file with a large number of ansi sequences causing a large number of fold regions,
+     * the ui freezes for several seconds when the ide restores folding regions internally, this applies a workaround
+     * to prevent the freeze, it takes into consideration files opened more than once in multiple splitters.
+     */
+    private void applyWorkaroundToDisableFoldingStateRestoration() {
+        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
+
+            @Override
+            public void fileOpened(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                if (!ANSIAwareFileType.isANSIAware(file)) return;
+                turnFoldingOn(file);
+            }
+
+            @Override
+            public void fileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                if (!ANSIAwareFileType.isANSIAware(file)) return;
+                turnFoldingOn(file);
+            }
+        });
+
+
+        connection.subscribe(FileEditorManagerListener.Before.FILE_EDITOR_MANAGER, new FileEditorManagerListener.Before.Adapter() {
+            @Override
+            public void beforeFileOpened(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                if(!ANSIAwareFileType.isANSIAware(file)) return;
+                turnFoldingOff(file);
+            }
+
+            @Override
+            public void beforeFileClosed(@NotNull FileEditorManager source, @NotNull VirtualFile file) {
+                if(!ANSIAwareFileType.isANSIAware(file)) return;
+                turnFoldingOff(file);
+            }
+        });
+        ProjectManager.getInstance().addProjectManagerListener(project, new ProjectManagerAdapter() {
+            @Override
+            public boolean canCloseProject(Project project) {
+                //canClose is the only callback that fires before saving the project
+                VirtualFile[] openFiles = FileEditorManagerEx.getInstanceEx(project).getOpenFiles();
+                for(VirtualFile file : openFiles) {
+                    turnFoldingOff(file);
+                }
+                return true;
+            }
+        });
+    }
+
+    private void turnFoldingOff(VirtualFile file) {
+        Document doc = FileDocumentManager.getInstance().getDocument(file);
+        Editor[] editors = EditorFactory.getInstance().getEditors(doc);
+        if(editors == null || editors.length == 0) return;
+        for(Editor editor : editors) {
+            FoldingModelEx fm = (FoldingModelEx) editor.getFoldingModel();
+            fm.setFoldingEnabled(false);
+        }
+        EditorHistoryManager.getInstance(project).updateHistoryEntry(file, false);
+    }
+
+    private void turnFoldingOn(VirtualFile file) {
+        Document doc = FileDocumentManager.getInstance().getDocument(file);
+        Editor[] editors = EditorFactory.getInstance().getEditors(doc);
+        if(editors == null || editors.length == 0) return;
+
+        for(Editor editor : editors) {
+            FoldingModelEx fm = (FoldingModelEx) editor.getFoldingModel();
+            fm.setFoldingEnabled(true);
+        }
+    }
+
+
 
     @Override
     public void toggleANSIHighlighter(AnActionEvent e) {
@@ -104,7 +199,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void projectOpened() {
-
     }
 
     @Override

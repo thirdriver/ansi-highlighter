@@ -36,8 +36,6 @@ public class ANSIHighlighter {
     private long currentBackgroundTaskId = 0;
     private HighlightQueue queue = new HighlightQueue();
 
-    private static final int SLEEP_MILLIS = 3;
-
     private final Project project;
 
     private final Application application;
@@ -153,32 +151,24 @@ public class ANSIHighlighter {
                                  Pair<List<HighlightRangeData>, List<FoldRegion>> result,
                                  ProgressIndicator indicator,
                                  long id) {
-        try {
-            if(!isEmptyHighlightResult(result)) {
-                application.invokeAndWait(() -> {
-                    queue.addNewTask(editor, result.first, result.second);
-                });
-            }
+        if(!isEmptyHighlightResult(result)) {
+            application.invokeAndWait(() ->
+                queue.addNewTask(editor, result.first, result.second)
+            );
+        }
 
-            while(id == currentBackgroundTaskId && !queue.isEmpty()) {
-                application.invokeAndWait(() -> {
-                    if(id != currentBackgroundTaskId || queue.isEmpty()) return;
-                    HighlightTaskData task = queue.next();
-                    if(task.getEditor().isDisposed()) {
-                        queue.removeTask(task);
-                        return;
-                    }
-                    task.run(ALL_ATTRIBUTES);
-                    queue.taskProcessedUpdateQueue(task);
-                });
-
-                indicator.setFraction(queue.getProgressFraction());
-                //sleep a bit to prevent freezing the UI for large highlight tasks
-                Thread.sleep(SLEEP_MILLIS);
-            }
-
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        while(id == currentBackgroundTaskId && !queue.isEmpty()) {
+            application.invokeAndWait(() -> {
+                if(id != currentBackgroundTaskId || queue.isEmpty()) return;
+                HighlightTaskData task = queue.next();
+                if(task.getEditor().isDisposed()) {
+                    queue.removeTask(task);
+                    return;
+                }
+                task.run(ALL_ATTRIBUTES);
+                queue.taskProcessedUpdateQueue(task);
+            });
+            indicator.setFraction(queue.getProgressFraction());
         }
     }
 
