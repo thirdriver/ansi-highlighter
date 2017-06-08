@@ -14,10 +14,7 @@ import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.FoldingListener;
 import com.intellij.openapi.editor.ex.FoldingModelEx;
-import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.fileEditor.FileDocumentManagerAdapter;
-import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.fileEditor.FileEditorManagerListener;
+import com.intellij.openapi.fileEditor.*;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.fileEditor.impl.EditorHistoryManager;
 import com.intellij.openapi.project.Project;
@@ -131,6 +128,9 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 if (!ANSIAwareFileType.isANSIAware(file)) return;
                 turnFoldingOn(file);
             }
+
+
+            public void selectionChanged(@NotNull FileEditorManagerEvent var1){}
         });
 
 
