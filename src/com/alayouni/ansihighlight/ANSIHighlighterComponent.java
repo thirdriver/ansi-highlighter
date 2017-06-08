@@ -76,7 +76,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
         connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
 
-//        applyWorkaroundToDisableFoldingStateRestoration();
+        applyWorkaroundToDisableFoldingStateRestoration();
     }
 
     /**
