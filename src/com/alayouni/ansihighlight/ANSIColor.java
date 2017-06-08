@@ -41,6 +41,7 @@ class ANSIColor {
 
     //______________________pre-calculations to accelerate parsing___________________________________
 
+    //see ANSIHighlighter#ALL_TEXT_ATTRIBUTES and ANSIHighlighter#ENCODER
     private static final int FOREGROUND_START_CODE = 30;
     private static final int FOREGROUND_END_CODE = 37;
 
@@ -63,19 +64,17 @@ class ANSIColor {
     }
 
     static void setupColorsEncoders(ANSITextAttributesIDEncoder[] encoders) {
-        //see ANSIHighlighter.ALL_TEXT_ATTRIBUTES and ANSIHighlighter.ENCODER
+        //see ANSIHighlighter#ALL_TEXT_ATTRIBUTES and ANSIHighlighter#ENCODER
         int resetMask = 0xFFFFFF87;
         for(int colorCode = FOREGROUND_START_CODE; colorCode <= FOREGROUND_END_CODE; colorCode ++) {
             encoders[colorCode] = new ANSITextAttributesIDEncoder(resetMask, (colorCode - FOREGROUND_START_CODE + 1) << 3);
         }
-//        encoders[FOREGROUND_END_CODE + 1] = new ANSITextAttributesIDEncoder(resetMask, 0);//no foreground
 
-        //see ANSIHighlighter.ALL_TEXT_ATTRIBUTES and ANSIHighlighter.ENCODER
+        //see ANSIHighlighter#ALL_TEXT_ATTRIBUTES and ANSIHighlighter#ENCODER
         resetMask = 0xFFFFF87F;
         for(int colorCode = BACKGROUND_START_CODE; colorCode <= BACKGROUND_END_CODE; colorCode ++) {
             encoders[colorCode] = new ANSITextAttributesIDEncoder(resetMask, (colorCode - BACKGROUND_START_CODE + 1) << 7);
         }
-//        encoders[BACKGROUND_END_CODE + 1] = new ANSITextAttributesIDEncoder(resetMask, 0);//no background
 
     }
 
