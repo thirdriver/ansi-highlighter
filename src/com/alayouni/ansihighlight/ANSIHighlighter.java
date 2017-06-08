@@ -188,7 +188,7 @@ public class ANSIHighlighter {
         ANSIColor.setupColorsEncoders(ENCODER);
     }
 
-    private static void preloadAllTextAttributes() {
+    public static void preloadAllTextAttributes() {
         TextAttributesOperation[] operations = new TextAttributesOperation[5];
         operations[0] = null;
         setupAllAttributesItalic(operations, 0);

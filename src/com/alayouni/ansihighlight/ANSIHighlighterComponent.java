@@ -8,6 +8,7 @@ import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.FoldRegion;
+import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.event.EditorFactoryAdapter;
 import com.intellij.openapi.editor.event.EditorFactoryEvent;
 import com.intellij.openapi.editor.ex.EditorEx;
@@ -44,7 +45,6 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
     @Override
     public void initComponent() {
-
         EditorFactory.getInstance().addEditorFactoryListener(new EditorFactoryAdapter() {
             @Override
             public void editorCreated(@NotNull EditorFactoryEvent e) {
@@ -76,6 +76,19 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
 
         connection.subscribe(TOGGLE_ANSI_HIGHLIGHTER_TOPIC, this);
 
+        connection.subscribe(EditorColorsManager.TOPIC, (editorColorsScheme) -> {
+            ANSIHighlighter.preloadAllTextAttributes();
+            Editor[] openEditors = EditorFactory.getInstance().getAllEditors();
+            if(openEditors == null || openEditors.length == 0) return;
+            FileDocumentManager fdm = FileDocumentManager.getInstance();
+            for(Editor editor : openEditors) {
+                Document doc = editor.getDocument();
+                VirtualFile file = fdm.getFile(doc);
+                if(!ANSIAwareFileType.isANSIAware(file)) continue;
+                ansiHighlighter.highlightANSISequences(editor);
+            }
+        });
+
         applyWorkaroundToDisableFoldingStateRestoration();
     }
 
@@ -100,8 +113,8 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
     }
 
     /**
-     * For ansi aware file with a large number of ansi sequences causing a large number of fold regions,
-     * the ui freezes for several seconds when the ide restores folding regions internally, this applies a workaround
+     * For ansi aware files with a large number of ansi sequences causing a large number of fold regions,
+     * the ui freezes for several seconds when the ide restores folding regions internally, this method applies a workaround
      * to prevent the freeze, it takes into consideration files opened more than once in multiple splitters.
      */
     private void applyWorkaroundToDisableFoldingStateRestoration() {
@@ -140,6 +153,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 //canClose is the only callback that fires before saving the project
                 VirtualFile[] openFiles = FileEditorManagerEx.getInstanceEx(project).getOpenFiles();
                 for(VirtualFile file : openFiles) {
+                    if(!ANSIAwareFileType.isANSIAware(file)) continue;
                     turnFoldingOff(file);
                 }
                 return true;

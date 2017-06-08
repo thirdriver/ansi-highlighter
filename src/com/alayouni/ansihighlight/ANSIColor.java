@@ -47,7 +47,6 @@ class ANSIColor {
     private static final int BACKGROUND_START_CODE = 40;
     private static final int BACKGROUND_END_CODE = 47;
 
-    private static final EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
     private static final ANSIColor[] ALL_COLORS = {
             new ANSIColor(ConsoleHighlighter.BLACK, JBColor.BLACK, JBColor.BLACK),
             new ANSIColor(ConsoleHighlighter.RED, JBColor.RED, JBColor.RED),
@@ -58,6 +57,8 @@ class ANSIColor {
             new ANSIColor(ConsoleHighlighter.CYAN, JBColor.CYAN, JBColor.CYAN),
             new ANSIColor(ConsoleHighlighter.WHITE, JBColor.WHITE, JBColor.WHITE)
     };
+
+    static EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
 
     static void setupColorsEncoders(ANSITextAttributesEncoder[] encoders) {
         int resetMask = 0xFFFFFF87;
