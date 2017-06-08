@@ -116,7 +116,7 @@ public class ANSIHighlighter {
 
     private void extractTextAttributesFromANSIEscapeSequence(String text, HighlightRangeData range) {
         range.end = range.start;
-        ANSITextAttributesEncoder encoder;
+        ANSITextAttributesIDEncoder encoder;
         range.id = 0;
         while (range.end < text.length() && text.startsWith(ESC, range.end)) {
             range.end += ESC.length();
@@ -131,7 +131,7 @@ public class ANSIHighlighter {
         }
     }
 
-    private ANSITextAttributesEncoder parseANSICode(String text, HighlightRangeData range) {
+    private ANSITextAttributesIDEncoder parseANSICode(String text, HighlightRangeData range) {
         int code = 0, d;
         boolean atLeastOneDigit = false;
         char c;
@@ -175,20 +175,73 @@ public class ANSIHighlighter {
 
     //______________________________Pre-calculations to accelerate parsing______________________________________
 
-    private static final ANSITextAttributesEncoder[] ENCODER = new ANSITextAttributesEncoder[49];
-
+    /**
+     * <p>
+     *     A supported ANSI sequence can result in exactly 648 different text attributes, that is:
+     *     <ul>
+     *         <li>2 (bold set/not set)</li>
+     *         <li>&times; 2 (italic set /not set)</li>
+     *         <li>&times; 2 (underlined set/not set) </li>
+     *         <li>&times; 9 (1 of 8 foreground colors or not set)</li>
+     *         <li>&times; 9 (1 of 8 background colors or not set).</li>
+     *
+     *     </ul>
+     * </p>
+     *
+     * <p>
+     *     Pre-loading and caching all the different values in an array at startup makes them efficiently accessible
+     *     through their indexes using bitwise operations if their indexes get slightly expanded to line-up as follows:
+     *     <ul>
+     *         <li>bit 0: bold set(1)/not set(0)</li>
+     *         <li>bit 1: italic set(1)/not set(0)</li>
+     *         <li>bit 2: underlined set(1)/not set(0)</li>
+     *         <li>bit 3-6 (4 bits): 0 if not set, otherwise 1(black) to 8(white)</li>
+     *         <li>bit 7-10 (4 bits): 0 if not set, otherwise 1(black) to 8(white)</li>
+     *     </ul>
+     *     This makes the highest possible index value 1000 1000 111b = 1095. Id's such as 100 1111 111b don't map
+     *     to a valid/supported sequence and are be left unset/null.
+     * </p>
+     */
     private static final TextAttributes[] ALL_ATTRIBUTES = new TextAttributes[1096];
 
+    /**
+     * To infer the index (or id) of a cached TextAttributes instance matching a parsed ansi sequence, the parser
+     * proceeds as follows:
+     * <ul>
+     *     <li>Start by initializing the id to 0</li>
+     *     <li>For each parsed code in the sequence apply the following formula <code>id = (id & resetMask) | mask</code></li>
+     * </ul>
+     * <p>
+     *     Example: say the parsed code is 35 (magenta foreground), here the matching <code>resetMask</code> would be
+     *     ...1111 0000 111b, and <code>mask</code> would be ...0000 0110 000b.
+     *     Notice the use of 0110b = 6 instead of 0101b = 5, that is because 0000 maps to null (no foreground color
+     *     code specified in the sequence), which means black (code 30) should map to 0001b instead of 0000b.
+     * </p>
+     *
+     * <p>
+     *     {@link #ENCODER} is pre-calculated at startup and maps each supported ANSI code (ranges from 0 to 47) to the
+     *     corresponding mask/resetMask encapsulated under {@link ANSITextAttributesIDEncoder} instances.
+     * </p>
+     *
+     * <p>
+     *     Using the cached encoders to calculate id's (indexes) of cached TextAttributes is very efficient, which is
+     *     important for large files with a large number of ansi sequences.
+     * </p>
+     */
+    private static final ANSITextAttributesIDEncoder[] ENCODER = new ANSITextAttributesIDEncoder[48];
+
     static {
-        ENCODER[RESET] = new ANSITextAttributesEncoder(0, 0);
-        ENCODER[BOLD] = new ANSITextAttributesEncoder(0xFFFFFFFE, 1);
-        ENCODER[ITALIC] = new ANSITextAttributesEncoder(0xFFFFFFFD, 2);
-        ENCODER[UNDERLINE] = new ANSITextAttributesEncoder(0xFFFFFFFB, 4);
+        ENCODER[RESET] = new ANSITextAttributesIDEncoder(0, 0);
+        ENCODER[BOLD] = new ANSITextAttributesIDEncoder(0xFFFFFFFE, 1);
+        ENCODER[ITALIC] = new ANSITextAttributesIDEncoder(0xFFFFFFFD, 2);
+        ENCODER[UNDERLINE] = new ANSITextAttributesIDEncoder(0xFFFFFFFB, 4);
 
         ANSIColor.setupColorsEncoders(ENCODER);
     }
 
     public static void preloadAllTextAttributes() {
+        ANSIColor.initAllANSIColors();
+
         TextAttributesOperation[] operations = new TextAttributesOperation[5];
         operations[0] = null;
         setupAllAttributesItalic(operations, 0);

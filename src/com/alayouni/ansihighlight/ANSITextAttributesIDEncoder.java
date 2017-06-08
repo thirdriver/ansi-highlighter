@@ -3,11 +3,11 @@ package com.alayouni.ansihighlight;
 /**
  * Created by alayouni on 6/5/17.
  */
-class ANSITextAttributesEncoder {
+class ANSITextAttributesIDEncoder {
     private final int resetMask;
     private final int mask;
 
-    ANSITextAttributesEncoder(int resetMask, int mask) {
+    ANSITextAttributesIDEncoder(int resetMask, int mask) {
         this.resetMask = resetMask;
         this.mask = mask;
     }

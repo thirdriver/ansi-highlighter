@@ -47,31 +47,35 @@ class ANSIColor {
     private static final int BACKGROUND_START_CODE = 40;
     private static final int BACKGROUND_END_CODE = 47;
 
-    private static final ANSIColor[] ALL_COLORS = {
-            new ANSIColor(ConsoleHighlighter.BLACK, JBColor.BLACK, JBColor.BLACK),
-            new ANSIColor(ConsoleHighlighter.RED, JBColor.RED, JBColor.RED),
-            new ANSIColor(ConsoleHighlighter.GREEN, JBColor.GREEN, JBColor.GREEN),
-            new ANSIColor(ConsoleHighlighter.YELLOW, JBColor.YELLOW, JBColor.YELLOW),
-            new ANSIColor(ConsoleHighlighter.BLUE, JBColor.BLUE, JBColor.BLUE),
-            new ANSIColor(ConsoleHighlighter.MAGENTA, JBColor.MAGENTA, JBColor.MAGENTA),
-            new ANSIColor(ConsoleHighlighter.CYAN, JBColor.CYAN, JBColor.CYAN),
-            new ANSIColor(ConsoleHighlighter.WHITE, JBColor.WHITE, JBColor.WHITE)
-    };
+    private static ANSIColor[] ALL_COLORS = new ANSIColor[8];
 
     static EditorColorsScheme colorsScheme = EditorColorsManager.getInstance().getGlobalScheme();
 
-    static void setupColorsEncoders(ANSITextAttributesEncoder[] encoders) {
+    static void initAllANSIColors() {
+        ALL_COLORS[0] = new ANSIColor(ConsoleHighlighter.BLACK, JBColor.BLACK, JBColor.BLACK);
+        ALL_COLORS[1] = new ANSIColor(ConsoleHighlighter.RED, JBColor.RED, JBColor.RED);
+        ALL_COLORS[2] = new ANSIColor(ConsoleHighlighter.GREEN, JBColor.GREEN, JBColor.GREEN);
+        ALL_COLORS[3] = new ANSIColor(ConsoleHighlighter.YELLOW, JBColor.YELLOW, JBColor.YELLOW);
+        ALL_COLORS[4] = new ANSIColor(ConsoleHighlighter.BLUE, JBColor.BLUE, JBColor.BLUE);
+        ALL_COLORS[5] = new ANSIColor(ConsoleHighlighter.MAGENTA, JBColor.MAGENTA, JBColor.MAGENTA);
+        ALL_COLORS[6] = new ANSIColor(ConsoleHighlighter.CYAN, JBColor.CYAN, JBColor.CYAN);
+        ALL_COLORS[7] = new ANSIColor(ConsoleHighlighter.WHITE, JBColor.WHITE, JBColor.WHITE);
+    }
+
+    static void setupColorsEncoders(ANSITextAttributesIDEncoder[] encoders) {
+        //see ANSIHighlighter.ALL_TEXT_ATTRIBUTES and ANSIHighlighter.ENCODER
         int resetMask = 0xFFFFFF87;
         for(int colorCode = FOREGROUND_START_CODE; colorCode <= FOREGROUND_END_CODE; colorCode ++) {
-            encoders[colorCode] = new ANSITextAttributesEncoder(resetMask, (colorCode - FOREGROUND_START_CODE + 1) << 3);
+            encoders[colorCode] = new ANSITextAttributesIDEncoder(resetMask, (colorCode - FOREGROUND_START_CODE + 1) << 3);
         }
-        encoders[FOREGROUND_END_CODE + 1] = new ANSITextAttributesEncoder(resetMask, 0);//no foreground
+//        encoders[FOREGROUND_END_CODE + 1] = new ANSITextAttributesIDEncoder(resetMask, 0);//no foreground
 
+        //see ANSIHighlighter.ALL_TEXT_ATTRIBUTES and ANSIHighlighter.ENCODER
         resetMask = 0xFFFFF87F;
         for(int colorCode = BACKGROUND_START_CODE; colorCode <= BACKGROUND_END_CODE; colorCode ++) {
-            encoders[colorCode] = new ANSITextAttributesEncoder(resetMask, (colorCode - BACKGROUND_START_CODE + 1) << 7);
+            encoders[colorCode] = new ANSITextAttributesIDEncoder(resetMask, (colorCode - BACKGROUND_START_CODE + 1) << 7);
         }
-        encoders[BACKGROUND_END_CODE + 1] = new ANSITextAttributesEncoder(resetMask, 0);//no background
+//        encoders[BACKGROUND_END_CODE + 1] = new ANSITextAttributesIDEncoder(resetMask, 0);//no background
 
     }
 
