@@ -75,7 +75,7 @@ class HighlightQueue {
         return doneWork/ (double)totalEstimatedWork;
     }
 
-    boolean isEmpty() {
+    public boolean isEmpty() {
         return current == null;
     }
 }
