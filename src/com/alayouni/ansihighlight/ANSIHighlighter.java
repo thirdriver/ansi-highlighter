@@ -167,7 +167,7 @@ public class ANSIHighlighter {
             ItemHolder<BackgroundableProcessIndicator> indicator = new ItemHolder<>();
             application.invokeAndWait(() -> {
                 indicator.set(new BackgroundableProcessIndicator(project, "Highlighting ANSI Sequences...", PerformInBackgroundOption.ALWAYS_BACKGROUND,
-                        null, null, true));
+                        null, null, false));
                 indicator.get().start();
             });
             while(!queue.isEmpty()) {
