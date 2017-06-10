@@ -7,12 +7,16 @@ import com.intellij.openapi.editor.FoldRegion;
 import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.editor.markup.EffectType;
 import com.intellij.openapi.editor.markup.TextAttributes;
+import com.intellij.openapi.progress.PerformInBackgroundOption;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.progress.impl.BackgroundableProcessIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
+import com.intellij.util.concurrency.BoundedTaskExecutor;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.ide.PooledThreadExecutor;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -32,18 +36,19 @@ public class ANSIHighlighter {
     private static final int ITALIC = 3;
     private static final int UNDERLINE = 4;
 
-
-    private long currentBackgroundTaskId = 0;
     private HighlightQueue queue = new HighlightQueue();
 
     private final Project project;
 
     private final Application application;
 
+    private final BoundedTaskExecutor executor;
+
 
     public ANSIHighlighter(Project project) {
         this.project = project;
         this.application = ApplicationManager.getApplication();
+        executor = new BoundedTaskExecutor("ANSI Highlighter Executor", PooledThreadExecutor.INSTANCE, 1, project);
         preloadAllTextAttributes();
     }
 
@@ -57,17 +62,19 @@ public class ANSIHighlighter {
         fm.runBatchFoldingOperation(fm::clearFoldRegions, false);
     }
 
+    //todo remove
+    int count = 0;
     public void highlightANSISequences(Editor editor) {
         application.assertIsDispatchThread();
         //increment id to gracefully neutralize and end other EDT scheduled highlight tasks
-        final long id = ++currentBackgroundTaskId;
         cleanupHighlights(editor);
 
-        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", true) {
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Highlighting ANSI Sequences...", false) {
+            //here using a backgroundable task to allow processing of editor content in multiple threads
             @Override
             public void run(@NotNull ProgressIndicator indicator) {
                 Pair<List<HighlightRangeData>, List<FoldRegion>> result = parseHighlights(editor);
-                applyHighlights(editor, result, indicator, id);
+                applyHighlights(editor, result);
             }
         });
     }
@@ -148,28 +155,39 @@ public class ANSIHighlighter {
     }
 
     private void applyHighlights(Editor editor,
-                                 Pair<List<HighlightRangeData>, List<FoldRegion>> result,
-                                 ProgressIndicator indicator,
-                                 long id) {
-        if(!isEmptyHighlightResult(result)) {
-            application.invokeAndWait(() ->
-                queue.addNewTask(editor, result.first, result.second)
-            );
-        }
+                                 Pair<List<HighlightRangeData>, List<FoldRegion>> result) {
+        if(isEmptyHighlightResult(result)) return;
+        application.invokeAndWait(() ->
+            queue.addNewTask(editor, result.first, result.second)
+        );
 
-        while(id == currentBackgroundTaskId && !queue.isEmpty()) {
+        executor.execute(() -> {
+            //dequeue and submit tasks to UI thread from single thread using BoundedTaskExecutor, to avoid overloading the UI thread
+            if(queue.isEmpty()) return;
+            ItemHolder<BackgroundableProcessIndicator> indicator = new ItemHolder<>();
             application.invokeAndWait(() -> {
-                if(id != currentBackgroundTaskId || queue.isEmpty()) return;
-                HighlightTaskData task = queue.next();
-                if(task.getEditor().isDisposed()) {
-                    queue.removeTask(task);
-                    return;
-                }
-                task.run(ALL_ATTRIBUTES);
-                queue.taskProcessedUpdateQueue(task);
+                indicator.set(new BackgroundableProcessIndicator(project, "Highlighting ANSI Sequences...", PerformInBackgroundOption.ALWAYS_BACKGROUND,
+                        null, null, true));
+                indicator.get().start();
             });
-            indicator.setFraction(queue.getProgressFraction());
-        }
+            while(!queue.isEmpty()) {
+                application.invokeAndWait(() -> {
+                    if(queue.isEmpty()) return;
+                    HighlightTaskData task = queue.next();
+                    if(task.getEditor().isDisposed()) {
+                        queue.removeTask(task);
+                        return;
+                    }
+                    task.run(ALL_ATTRIBUTES);
+                    queue.taskProcessedUpdateQueue(task);
+                });
+                indicator.get().setFraction(queue.getProgressFraction());
+            }
+            application.invokeAndWait(() -> {
+                indicator.get().stop();
+                indicator.get().processFinish();
+            });
+        });
     }
 
 
@@ -219,7 +237,7 @@ public class ANSIHighlighter {
      * </p>
      *
      * <p>
-     *     {@link #ENCODER} is pre-calculated at startup and maps each supported ANSI code (ranges from 0 to 47) to the
+     *     <code>ENCODER</code> is pre-calculated at startup and maps each supported ANSI code (ranges from 0 to 47) to the
      *     corresponding mask/resetMask encapsulated under {@link ANSITextAttributesIDEncoder} instances.
      * </p>
      *
