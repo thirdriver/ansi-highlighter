@@ -20,6 +20,7 @@ import com.intellij.openapi.fileEditor.impl.EditorHistoryManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectManagerAdapter;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
@@ -28,6 +29,8 @@ import org.jetbrains.annotations.NotNull;
  * Created by alayouni on 5/2/17.
  */
 public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlighterToggleNotifier {
+
+    public static final Key<Boolean> PREVIEW_MODE_KEY = Key.create("ansi-editor-preview-mode");
 
     private final Project project;
 
@@ -50,8 +53,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 if(!ANSIAwareFileType.isANSIAware(file)) return;
                 ansiHighlighter.highlightANSISequences(editor);
                 disableUnfoldingOnPreviewMode(editor);
-                if(!(editor instanceof EditorEx)) return;
-                ((EditorEx)editor).setViewer(true);
+                editor.putUserData(PREVIEW_MODE_KEY, true);
             }
 
         }, project);
@@ -64,7 +66,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
                 Editor[] editors = EditorFactory.getInstance().getEditors(document);
                 if(editors == null || editors.length == 0) return;
                 for(Editor editor : editors) {
-                    if(editor.isViewer()) {
+                    if(editor.getUserData(PREVIEW_MODE_KEY)) {
                         ansiHighlighter.highlightANSISequences(editor);
                     }
                 }
@@ -99,7 +101,7 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         fm.addListener(new FoldingListener() {
             @Override
             public void onFoldRegionStateChange(@NotNull FoldRegion foldRegion) {
-                if(!fm.isFoldingEnabled() || !foldRegion.isExpanded() || !editor.isViewer()) return;
+                if(!fm.isFoldingEnabled() || !foldRegion.isExpanded() || !editor.getUserData(PREVIEW_MODE_KEY)) return;
 
                 fm.runBatchFoldingOperation(() -> foldRegion.setExpanded(false));
             }
@@ -191,9 +193,9 @@ public class ANSIHighlighterComponent implements ProjectComponent, ANSIHighlight
         if(!ANSIAwareFileType.isANSIAware(file)) return;
         Editor editor = e.getData(CommonDataKeys.EDITOR);
         if(!(editor instanceof EditorEx)) return;
-        EditorEx ex = (EditorEx) editor;
-        ex.setViewer(!ex.isViewer());
-        if(ex.isViewer()) {//preview mode
+        boolean previewMode = !editor.getUserData(PREVIEW_MODE_KEY);
+        editor.putUserData(PREVIEW_MODE_KEY, previewMode);
+        if(previewMode) {
             ansiHighlighter.highlightANSISequences(editor);
         } else {
             ansiHighlighter.cleanupHighlights(editor);
