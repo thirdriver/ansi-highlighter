@@ -10,10 +10,10 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">Intell
     </ul>
 </li>
 <li>
-    Switch between Preview and Edit mode:
+    Switch between Preview and Plain mode:
     <ul>
         <li>Right click on the editor</li>
-        <li>Press 'Switch to Edit/Preview Mode'</li>
+        <li>Press 'Switch to Plain/Preview Mode'</li>
         <li>Alternatively use the shortcut 'ctrl meta A' while on the editor</li>
     </ul>
 </li>

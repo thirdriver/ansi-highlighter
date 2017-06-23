@@ -2,7 +2,7 @@
   <id>com.alayouni.ansiHighlight</id>
   <name>ANSI Highlighter</name>
   <version>1.2</version>
-  <vendor email="amd.layouni@gmail.com" url="linkedin.com/in/ahmed-layouni-4041a656">Ahmed Layouni</vendor>
+  <vendor email="amd.layouni@gmail.com">Ahmed Layouni</vendor>
 
   <description><![CDATA[
       This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">IntelliJ plugin</a> supports the rendering of the most common <a href="https://en.wikipedia.org/wiki/ANSI_escape_code#graphics">ANSI graphic rendition escape sequences</a> under IntelliJ editor. The following features are available:
@@ -17,7 +17,7 @@
           </ul>
       </li>
       <li>
-          Switch between Preview and Edit mode:
+          Switch between Preview and Plain mode:
           <ul>
               <li>Right click on the editor</li>
               <li>Press 'Switch to Edit/Preview Mode'</li>

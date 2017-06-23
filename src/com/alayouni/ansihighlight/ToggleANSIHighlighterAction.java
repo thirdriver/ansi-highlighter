@@ -27,7 +27,7 @@ public class ToggleANSIHighlighterAction extends AnAction {
         if(isAnsiAwareFile) {
             Editor editor = e.getData(CommonDataKeys.EDITOR);
             if(editor.getUserData(ANSIHighlighterComponent.PREVIEW_MODE_KEY)) {
-                e.getPresentation().setText("Switch To Edit Mode");
+                e.getPresentation().setText("Switch To Plain Mode");
             } else {
                 e.getPresentation().setText("Switch To Preview Mode");
             }
