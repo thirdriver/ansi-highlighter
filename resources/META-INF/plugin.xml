@@ -5,7 +5,7 @@
   <vendor email="amd.layouni@gmail.com">Ahmed Layouni</vendor>
 
   <description><![CDATA[
-      This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">plugin</a> supports the rendering of the most common <a href="https://en.wikipedia.org/wiki/ANSI_escape_code#graphics">ANSI graphic rendition escape sequences</a> under IntelliJ editor. The following features are available:
+      This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">plugin</a> supports the rendering of the most common <a href="https://en.wikipedia.org/wiki/ANSI_escape_code#graphics">ANSI graphic rendition sequences</a> under IntelliJ editor. The following features are available:
       <ul>
       <li>
           Configurable 'ANSI Aware' file extensions:
