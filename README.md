@@ -6,7 +6,7 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">plugin
         <li>Go to Preferences | Editor | File Types</li>
         <li>Under 'Recognized File Types' select 'ANSI Aware'</li>
         <li>Under 'Registered Patterns' add your custom 'ANSI Aware' file name patterns, *.log is added by default</li>
-        <li>Press the 'Apply' button</li>
+        <li>Press 'Apply'</li>
     </ul>
 </li>
 <li>
@@ -46,7 +46,7 @@ This <a href="https://plugins.jetbrains.com/plugin/9707-ansi-highlighter">plugin
             <li>Other colors are only supported by the console (not by the editor).</li>
         </ul>
         </li>
-        <li>Press the 'Apply' button</li>
+        <li>Press 'Apply'</li>
     </ul>
 </li>
 </ul>
