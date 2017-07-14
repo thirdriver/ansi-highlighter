@@ -16,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -125,12 +126,15 @@ public class ANSIHighlighter {
         char c;
         while (range.end < text.length()) {
             c = text.charAt(range.end ++);
-            if(c == SEQ_DELIM || c == SEQ_END) return atLeastOneDigit ? ENCODER[code] : null;
+            if(c == SEQ_DELIM || c == SEQ_END){
+                if(!atLeastOneDigit) return ANSITextAttributesIDEncoder.UNSUPPORTED_CODE_ENCODER;
+                return (code < ENCODER.length) ? ENCODER[code] : ANSITextAttributesIDEncoder.UNSUPPORTED_CODE_ENCODER;
+            }
             d = c - '0';
             if(d < 0 || d > 9) return null;
             atLeastOneDigit = true;
-            code = code * 10 + d;
-            if(code >= ENCODER.length) return null;
+            if(code < ENCODER.length)
+                code = code * 10 + d;
         }
         return null;
     }
@@ -234,6 +238,8 @@ public class ANSIHighlighter {
     private static final ANSITextAttributesIDEncoder[] ENCODER = new ANSITextAttributesIDEncoder[48];
 
     static {
+        Arrays.fill(ENCODER, ANSITextAttributesIDEncoder.UNSUPPORTED_CODE_ENCODER);
+
         ENCODER[RESET] = new ANSITextAttributesIDEncoder(0, 0);
         ENCODER[BOLD] = new ANSITextAttributesIDEncoder(0xFFFFFFFE, 1);
         ENCODER[ITALIC] = new ANSITextAttributesIDEncoder(0xFFFFFFFD, 2);
