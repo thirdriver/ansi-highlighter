@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>com.alayouni.ansiHighlight</id>
   <name>ANSI Highlighter</name>
-  <version>1.2.1</version>
+  <version>1.2.2</version>
   <vendor email="amd.layouni@gmail.com">Ahmed Layouni</vendor>
 
   <description><![CDATA[
